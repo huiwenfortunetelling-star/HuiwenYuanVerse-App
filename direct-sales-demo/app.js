@@ -406,8 +406,8 @@ document.addEventListener('DOMContentLoaded', () => {
           script.src =
             'https://www.paypal.com/sdk/js?client-id=' +
             encodeURIComponent(window.PAYPAL_CLIENT_ID) +
-            '&currency=CAD&intent=capture';
-  
+'&currency=CAD&intent=capture&disable-funding=card,credit,paylater,venmo';
+          
           script.onload = resolve;
           script.onerror = () => reject(new Error('PayPal SDK failed to load.'));
   
@@ -417,8 +417,10 @@ document.addEventListener('DOMContentLoaded', () => {
   
       message.textContent = '请使用 PayPal 完成付款。';
   
-      window.paypal
-        .Buttons({
+     window.paypal
+  .Buttons({
+    fundingSource: window.paypal.FUNDING.PAYPAL,
+    
           createOrder: async () => {
             const response = await fetch('/api/paypal/create-order', {
               method: 'POST',
