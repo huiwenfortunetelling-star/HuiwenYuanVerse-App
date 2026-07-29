@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>慧文国际善缘界</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="app-header">
+        <div class="app-header-left">
+          <div class="logo-mark"></div>
+          <div class="header-text">
+            <h1 class="app-title">慧文国际善缘界</h1>
+            <p class="app-subtitle">电子图片 · 多级分销 · 佣金与善缘值</p>
+          </div>
+        </div>
+        <div id="header-current-user" class="header-current-user" style="display:none"></div>
+        <button id="btn-logout" class="header-logout" type="button">
+          退出
+        </button>
+      </header>
+
+      <main class="app-main">
+        <!-- 登录 / 注册 -->
+        <section id="screen-auth" class="screen screen--active">
+          <div class="card">
+            <h2 class="card-title">登录 / 注册</h2>
+            <p class="card-tip">
+              先用一个简单账号体验完整流程，后面我们再接正式后端与支付。
+            </p>
+
+            <div id="login-form-wrap">
+            <label class="field">
+              <span class="field-label">邮箱</span>
+              <input id="auth-email" type="email" class="field-input" placeholder="you@example.com" />
+            </label>
+
+            <label class="field">
+              <span class="field-label">密码</span>
+              <div class="input-with-toggle">
+                <input id="auth-password" type="password" class="field-input" placeholder="至少 6 位" />
+                <button type="button" id="btn-toggle-password" class="input-toggle-btn" title="显示密码">
+                  <span class="toggle-text">显示</span>
+                </button>
+              </div>
+            </label>
+
+            <p class="auth-links">
+              <button type="button" id="btn-forgot-password" class="link-btn">忘记密码？</button>
+            </p>
+
+            <label class="field">
+              <span class="field-label">推荐码（可选）</span>
+              <input
+                id="auth-referral"
+                type="text"
+                class="field-input"
+                placeholder="来自上级的邀请码 / 链接参数"
+              />
+            </label>
+
+            <button id="btn-login" class="btn btn-primary">登录 / 注册并进入系统</button>
+            </div>
+
+            <div id="forgot-password-panel" class="forgot-panel" hidden>
+              <h3 class="card-title">重置密码</h3>
+              <p class="card-tip">
+                正式版将向邮箱发送重置链接。Demo 中：输入已注册邮箱，可直接设置新密码。
+              </p>
+              <label class="field">
+                <span class="field-label">邮箱</span>
+                <input id="reset-email" type="email" class="field-input" placeholder="you@example.com" />
+              </label>
+              <label class="field">
+                <span class="field-label">新密码</span>
+                <input id="reset-password" type="password" class="field-input" placeholder="至少 6 位" />
+              </label>
+              <label class="field">
+                <span class="field-label">确认新密码</span>
+                <input id="reset-password-confirm" type="password" class="field-input" placeholder="再次输入" />
+              </label>
+              <button id="btn-submit-reset" type="button" class="btn btn-primary">确认重置</button>
+              <button id="btn-back-login" type="button" class="link-btn">返回登录</button>
+              <p id="reset-message" class="status-message"></p>
+            </div>
+
+            <p class="auth-footer">
+              <button type="button" id="btn-reset-demo" class="link-btn">
+                清空本地数据（Demo 测试用）
+              </button>
+            </p>
+          </div>
+        </section>
+
+        <!-- 主界面 -->
+        <section id="screen-main" class="screen" hidden>
+          <nav class="tab-bar">
+            <button data-tab="products" class="tab tab--active">商品</button>
+            <button data-tab="orders" class="tab">订单</button>
+            <button data-tab="network" class="tab">团队</button>
+            <button data-tab="wallet" class="tab">佣金与善缘值</button>
+            <button data-tab="share" class="tab">分享</button>
+            <button data-tab="support" class="tab">客服预约</button>
+          </nav>
+
+          <section id="tab-products" class="tab-panel tab-panel--active">
+            <div class="card">
+              <h2 class="card-title">电子图片商品</h2>
+              <p class="card-tip">
+                这里先用几款示例图片。后续可以替换成你的真实作品和价格。
+              </p>
+              <div id="product-list" class="product-list"></div>
+            </div>
+          </section>
+
+          <section id="tab-orders" class="tab-panel">
+            <div class="card">
+              <h2 class="card-title">我的订单</h2>
+              <p class="card-tip">模拟购买记录，仅保存在本地。</p>
+              <div id="my-orders-list" class="orders-list"></div>
+            </div>
+          </section>
+
+          <section id="tab-network" class="tab-panel">
+            <div class="card">
+              <h2 class="card-title">我的团队结构（树形）</h2>
+              <p class="card-tip">
+                默认只显示直推，点击展开查看下级。最多 5 级，再往下仅管理员可见。
+              </p>
+              <label class="field">
+                <span class="field-label">搜索</span>
+                <input id="network-search" type="text" class="field-input" placeholder="邀请码或邮箱" />
+              </label>
+              <div id="network-list"></div>
+            </div>
+          </section>
+
+          <section id="tab-wallet" class="tab-panel">
+            <div class="card">
+              <h2 class="card-title">我的邀请码 & 账户概览</h2>
+              <p class="card-tip">
+                下面的数据全部保存在本地浏览器中，用于演示多级分销下的佣金与善缘值累积。
+              </p>
+
+              <div class="field">
+                <span class="field-label">我的邀请码</span>
+                <div id="wallet-my-code" class="wallet-highlight">—</div>
+              </div>
+
+              <div class="field">
+                <span class="field-label">上级邀请码（如果有）</span>
+                <div id="wallet-parent-code" class="wallet-subtext">—</div>
+              </div>
+
+              <div class="field">
+                <div class="wallet-field-row">
+                  <span class="field-label">累计获得佣金</span>
+                  <div id="wallet-total-commission" class="wallet-highlight">￥0.00</div>
+                </div>
+                <div id="wallet-commission-breakdown" class="wallet-commission-breakdown"></div>
+              </div>
+
+              <div class="field">
+                <div class="wallet-field-row">
+                  <span class="field-label">当前可提现金额（Demo：满 ￥100 可提现）</span>
+                  <div id="wallet-balance" class="wallet-highlight">￥0.00</div>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="wallet-field-row">
+                  <span class="field-label">当前善缘值</span>
+                  <div id="wallet-points" class="wallet-highlight">0 缘</div>
+                </div>
+              </div>
+              <div class="field" id="wallet-stats-wrap">
+                <span class="field-label">邀请统计</span>
+                <div id="wallet-stats" class="wallet-stats">直推 0 人 · 下级共 0 人</div>
+              </div>
+              <div class="field">
+                <button id="btn-withdraw" type="button" class="btn btn-primary">申请提现</button>
+                <p id="withdraw-tip" class="wallet-subtext">满 ￥100 可提现（Demo 仅扣减余额）</p>
+              </div>
+              <div class="field" id="withdraw-history-wrap">
+                <span class="field-label">提现记录</span>
+                <div id="withdraw-history" class="withdraw-history"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-share" class="tab-panel">
+            <div class="card">
+              <h2 class="card-title">我的分享链接</h2>
+              <p class="card-tip">
+                将下面的链接发给好友，对方通过链接注册时，会自动带上你的邀请码（Demo 仅在本机浏览器中生效）。
+              </p>
+
+              <div class="field">
+                <span class="field-label">公告</span>
+                <div id="share-announcement" class="announcement-box">
+                  此处由管理员后台发布与修改，暂无公告时显示此提示。
+                </div>
+              </div>
+
+              <div class="field">
+                <span class="field-label">专属分享链接</span>
+                <div class="share-row">
+                  <input
+                    id="wallet-share-link"
+                    class="field-input share-input"
+                    type="text"
+                    value=""
+                    readonly
+                  />
+                  <button id="btn-copy-share-link" type="button" class="btn-share-copy">
+                    复制
+                  </button>
+                </div>
+                <div id="wallet-share-tip" class="wallet-subtext">
+                  建议在新窗口中打开该链接，以模拟新用户从你的分享进入系统的效果。
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-support" class="tab-panel">
+            <div class="card">
+              <h2 class="card-title">AI 咨询 & 真人预约</h2>
+              <p class="card-tip">
+                先试试 AI 咨询，常见问题可即时解答。如需真人顾问，再预约即可。
+              </p>
+
+              <div class="ai-chat-section">
+                <span class="field-label">AI 咨询</span>
+                <div id="ai-chat-messages" class="ai-chat-messages"></div>
+                <div class="ai-chat-input-row">
+                  <input id="ai-chat-input" type="text" class="field-input" placeholder="输入问题，如：如何提现？佣金怎么算？" />
+                  <button id="btn-ai-send" type="button" class="btn btn-primary">发送</button>
+                </div>
+              </div>
+
+              <div id="human-consult-wrap">
+                <div class="human-booking-divider">
+                  <span>AI 回答不够？需要真人顾问？</span>
+                </div>
+                <div id="non-buyer-tip" class="non-buyer-tip" hidden>
+                  <p>真人咨询仅对购买客户开放。请先<a href="#" data-tab-link="products">购买商品</a>后再预约。</p>
+                </div>
+              <div class="human-booking-section">
+                <span class="field-label">真人咨询预约</span>
+                <div class="consult-rules">
+                  <h4>咨询规则</h4>
+                  <ul>
+                    <li>购买客户：首 30 分钟免费，系统自动计时</li>
+                    <li>30 分钟时系统提示，继续需支付 $45 加币/半小时</li>
+                    <li>单次咨询不超过 2 小时，超时需再次预约</li>
+                    <li>可预约时间：每天 10:00–18:00，需提前至少 1 天</li>
+                  </ul>
+                </div>
+                <label class="field">
+                  <span class="field-label">预约日期</span>
+                  <input id="booking-date" type="date" class="field-input" />
+                </label>
+                <label class="field">
+                  <span class="field-label">预约时间</span>
+                  <select id="booking-slot" class="field-input">
+                    <option value="">请选择时间段</option>
+                    <option value="10:00-10:30">10:00 - 10:30</option>
+                    <option value="10:30-11:00">10:30 - 11:00</option>
+                    <option value="11:00-11:30">11:00 - 11:30</option>
+                    <option value="11:30-12:00">11:30 - 12:00</option>
+                    <option value="14:00-14:30">14:00 - 14:30</option>
+                    <option value="14:30-15:00">14:30 - 15:00</option>
+                    <option value="15:00-15:30">15:00 - 15:30</option>
+                    <option value="15:30-16:00">15:30 - 16:00</option>
+                    <option value="16:00-16:30">16:00 - 16:30</option>
+                    <option value="16:30-17:00">16:30 - 17:00</option>
+                    <option value="17:00-17:30">17:00 - 17:30</option>
+                    <option value="17:30-18:00">17:30 - 18:00</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">预约时长</span>
+                  <select id="booking-duration" class="field-input">
+                    <option value="30">30 分钟</option>
+                    <option value="60">1 小时</option>
+                    <option value="90">1.5 小时</option>
+                    <option value="120" selected>2 小时（上限）</option>
+                  </select>
+                </label>
+                <button id="btn-booking" class="btn btn-primary">提交预约</button>
+              </div>
+
+              <div id="my-bookings-section" class="my-bookings-section">
+                <span class="field-label">我的预约</span>
+                <div id="my-bookings-list" class="my-bookings-list"></div>
+              </div>
+              </div>
+
+              <div id="consult-session-wrap" class="consult-session-wrap" hidden>
+                <div class="consult-session-card">
+                  <h3>咨询进行中</h3>
+                  <div id="consult-timer" class="consult-timer">00:00</div>
+                  <div id="consult-status" class="consult-status"></div>
+                  <button id="btn-end-consult" type="button" class="btn btn-ghost">结束咨询</button>
+                </div>
+              </div>
+
+              <p id="booking-message" class="status-message"></p>
+            </div>
+          </section>
+        </section>
+      </main>
+
+      <!-- 购买前填写信息弹窗 -->
+      <div id="purchase-modal" class="purchase-modal" hidden>
+        <div class="purchase-modal-backdrop"></div>
+        <div class="purchase-modal-content">
+          <h3 class="purchase-modal-title">填写信息</h3>
+          <p class="purchase-modal-tip">请填写以下信息，用于制作专属电子图片。</p>
+          <label class="field">
+            <span class="field-label">姓名</span>
+            <input id="purchase-buyer-name" type="text" class="field-input" placeholder="请输入姓名" />
+          </label>
+          <label class="field">
+            <span class="field-label">出生年月日</span>
+            <input id="purchase-buyer-dob" type="date" class="field-input" placeholder="YYYY-MM-DD" />
+          </label>
+          <label class="field">
+            <span class="field-label">来自的国家</span>
+            <input id="purchase-buyer-country" type="text" class="field-input" placeholder="如：中国、加拿大" />
+          </label>
+          <div class="purchase-modal-actions">
+            <button type="button" id="purchase-modal-cancel" class="btn btn-ghost">取消</button>
+            <button type="button" id="purchase-modal-confirm" class="btn btn-primary">确认购买</button>
+          </div>
+          <div id="paypal-payment-area" hidden>
+            <p id="paypal-payment-message" class="status-message"></p>
+            <div id="paypal-button-container"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="/api/paypal/config"></script>
+    <script src="./app.js" onerror="alert('脚本加载失败！请确保在 direct-sales-demo 文件夹内打开此页面，或使用 Live Server 从该目录启动。')"></script>
+  </body>
+</html>
+

@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>管理后台 - Huiwen 直销 Demo</title>
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+  <body>
+    <div class="admin-app">
+      <!-- 登录 -->
+      <section id="admin-login" class="admin-screen admin-screen--active">
+        <div class="admin-card">
+          <h1 class="admin-title">管理后台</h1>
+          <p class="admin-tip">Demo：首次使用请设置管理员密码，之后用该密码登录。</p>
+
+          <div id="setup-form" class="auth-form">
+            <label class="field">
+              <span class="field-label">设置管理员密码</span>
+              <input id="setup-password" type="password" class="field-input" placeholder="至少 6 位" />
+            </label>
+            <button id="btn-setup" type="button" class="btn btn-primary">保存并进入</button>
+          </div>
+
+          <div id="login-form" class="auth-form" hidden>
+            <label class="field">
+              <span class="field-label">管理员密码</span>
+              <input id="admin-password" type="password" class="field-input" placeholder="请输入密码" />
+            </label>
+            <button id="btn-admin-login" type="button" class="btn btn-primary">登录</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 主界面 -->
+      <section id="admin-main" class="admin-screen" hidden>
+        <header class="admin-header">
+          <h1 class="admin-header-title">管理后台</h1>
+          <div class="admin-header-actions">
+            <a href="../index.html" class="link-btn">返回前台</a>
+            <button id="btn-admin-logout" type="button" class="btn btn-ghost">退出</button>
+          </div>
+        </header>
+
+        <nav class="admin-nav">
+          <button data-panel="products" class="admin-nav-btn admin-nav-btn--active">商品管理</button>
+          <button data-panel="orders" class="admin-nav-btn">订单记录 <span id="nav-orders-badge" class="nav-badge"></span></button>
+          <button data-panel="users" class="admin-nav-btn">用户与团队</button>
+          <button data-panel="announcement" class="admin-nav-btn">公告管理</button>
+          <button data-panel="ai-consult" class="admin-nav-btn">AI 咨询</button>
+          <button data-panel="bookings" class="admin-nav-btn">预约记录</button>
+          <button data-panel="export" class="admin-nav-btn">数据导出</button>
+        </nav>
+
+        <main class="admin-content">
+          <section id="panel-products" class="admin-panel admin-panel--active">
+            <div class="admin-card">
+              <h2 class="panel-title">商品管理</h2>
+              <p class="panel-tip">增删改商品，前台 Demo 会读取此处数据。</p>
+              <button id="btn-add-product" type="button" class="btn btn-primary">新增商品</button>
+              <div id="product-list-admin" class="product-list-admin"></div>
+            </div>
+          </section>
+
+          <section id="panel-orders" class="admin-panel">
+            <div class="admin-card">
+              <h2 class="panel-title">订单记录 <span id="orders-pending-badge" class="pending-badge"></span></h2>
+              <p class="panel-tip">用户购买后生成唯一二维码，管理员按订单制作电子图片后点击「发货」。</p>
+              <details class="verification-config" open>
+                <summary>防伪验证对接</summary>
+                <p class="panel-tip">配置后，二维码将指向防伪网站，扫码后在其网站显示验证信息。需向防伪服务商获取：验证页 URL、注册 API 地址及参数格式。</p>
+                <label class="field">
+                  <span class="field-label">验证页 URL（扫码后跳转的地址，如 https://verify.example.com/check）</span>
+                  <input id="verification-url" type="url" class="field-input" placeholder="https://verify.example.com/check" />
+                </label>
+                <label class="field">
+                  <span class="field-label">URL 参数名（验证页用哪个参数接收订单号，如 code 或 id）</span>
+                  <input id="verification-param" type="text" class="field-input" placeholder="code" />
+                </label>
+                <label class="field">
+                  <span class="field-label">注册 API（发货时推送订单数据到防伪平台，可选）</span>
+                  <input id="verification-api" type="url" class="field-input" placeholder="https://api.example.com/register" />
+                </label>
+                <label class="field">
+                  <span class="field-label">API Key（若需要认证）</span>
+                  <input id="verification-apikey" type="text" class="field-input" placeholder="可选" />
+                </label>
+                <button type="button" id="btn-save-verification" class="btn btn-ghost btn-small">保存防伪配置</button>
+              </details>
+              <div id="order-list-admin" class="order-list-admin"></div>
+            </div>
+          </section>
+
+          <section id="panel-users" class="admin-panel">
+            <div class="admin-card">
+              <h2 class="panel-title">用户与团队（全貌）</h2>
+              <p class="panel-tip">管理员可查看完整树形结构，无 5 级限制。点击可展开/收起。</p>
+              <div id="user-stats-summary" class="user-stats-summary">
+                <div id="user-stats-total" class="user-stats-total">总用户数：0 人</div>
+                <span class="user-stats-emails-label">所有下线邮箱：</span>
+                <div id="user-emails-list" class="user-emails-list"></div>
+              </div>
+              <label class="field">
+                <span class="field-label">搜索</span>
+                <input id="user-tree-search" type="text" class="field-input" placeholder="邀请码或邮箱（加引号如 &quot;A001B001&quot; 精确匹配）" />
+              </label>
+              <div id="user-tree-admin" class="user-tree-admin"></div>
+            </div>
+          </section>
+
+          <section id="panel-announcement" class="admin-panel">
+            <div class="admin-card">
+              <h2 class="panel-title">公告管理</h2>
+              <p class="panel-tip">发布或修改公告，将显示在前台「分享」页。</p>
+              <div class="announcement-form">
+                <label class="field">
+                  <span class="field-label">公告图片（可选）</span>
+                  <div class="image-upload-wrap">
+                    <input id="admin-announcement-image" type="file" accept="image/*" class="field-input image-input" />
+                    <div id="admin-announcement-preview" class="image-preview" title="点击可清除">无图片</div>
+                  </div>
+                </label>
+                <label class="field">
+                  <span class="field-label">公告内容</span>
+                  <textarea id="admin-announcement" class="field-input" rows="6" placeholder="输入公告内容..."></textarea>
+                </label>
+                <button id="btn-save-announcement" type="button" class="btn btn-primary" onclick="if(window.saveAnnouncementClick)window.saveAnnouncementClick();else alert('请刷新页面后重试')">保存公告</button>
+              </div>
+              <div id="announcement-record" class="announcement-record">
+                <span class="announcement-record-label">当前公告：</span>
+                <div id="announcement-record-content" class="announcement-record-content">暂无公告</div>
+              </div>
+              <div class="storage-tools">
+                <span class="field-label">存储空间不足时：</span>
+                <button type="button" id="btn-clear-announcement-image" class="btn btn-ghost btn-small">清除公告图片</button>
+                <button type="button" id="btn-clear-product-images" class="btn btn-ghost btn-small">清除所有商品图片</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="panel-ai-consult" class="admin-panel">
+            <div class="admin-card">
+              <h2 class="panel-title">AI 咨询配置</h2>
+              <p class="panel-tip">配置常见问题与回答，用户提问时按关键词匹配。格式：关键词用 | 分隔，如「提现|佣金」。</p>
+              <div id="ai-faq-list" class="ai-faq-list"></div>
+              <button id="btn-add-faq" type="button" class="btn btn-ghost btn-small">+ 添加问答</button>
+              <div id="ai-faq-modal" class="modal" hidden>
+                <div class="modal-backdrop"></div>
+                <div class="modal-content">
+                  <h3 class="modal-title">编辑问答</h3>
+                  <label class="field">
+                    <span class="field-label">关键词（用 | 分隔）</span>
+                    <input id="faq-keywords" type="text" class="field-input" placeholder="提现|佣金|余额" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">回答</span>
+                    <textarea id="faq-answer" class="field-input" rows="4" placeholder="AI 回复内容"></textarea>
+                  </label>
+                  <div class="modal-actions">
+                    <button id="btn-faq-cancel" type="button" class="btn btn-ghost">取消</button>
+                    <button id="btn-faq-save" type="button" class="btn btn-primary">保存</button>
+                  </div>
+                </div>
+              </div>
+              <div class="ai-chat-records" style="margin-top:20px">
+                <span class="field-label">最近咨询记录</span>
+                <div id="ai-chat-records-list" class="ai-chat-records-list"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="panel-bookings" class="admin-panel">
+            <div class="admin-card">
+              <h2 class="panel-title">预约记录</h2>
+              <p class="panel-tip">Demo 中保存的预约列表（仅本地）。</p>
+              <div id="booking-list-admin" class="booking-list-admin"></div>
+            </div>
+          </section>
+
+          <section id="panel-export" class="admin-panel">
+            <div class="admin-card">
+              <h2 class="panel-title">数据导出</h2>
+              <p class="panel-tip">导出 Demo 数据为 JSON 文件，便于备份或迁移。</p>
+              <button id="btn-export-json" type="button" class="btn btn-primary">导出 JSON</button>
+            </div>
+          </section>
+        </main>
+      </section>
+
+      <!-- 发货弹窗：上传电子图片后发货 -->
+      <div id="ship-modal" class="modal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <h3 class="modal-title">上传电子图片并发货</h3>
+          <p class="ship-modal-order-info" id="ship-modal-order-info"></p>
+          <label class="field">
+            <span class="field-label">上传制作好的电子图片</span>
+            <div class="image-upload-wrap">
+              <input id="ship-modal-image" type="file" accept="image/*" class="field-input image-input" />
+              <div id="ship-modal-preview" class="image-preview" title="点击可清除">未选择</div>
+            </div>
+          </label>
+          <div class="modal-actions">
+            <button type="button" id="btn-ship-cancel" class="btn btn-ghost">取消</button>
+            <button type="button" id="btn-ship-confirm" class="btn btn-primary" disabled>确认发货</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 商品编辑弹窗 -->
+      <div id="product-modal" class="modal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <h3 class="modal-title">编辑商品</h3>
+          <label class="field">
+            <span class="field-label">商品图片（可选）</span>
+            <div class="image-upload-wrap">
+              <input id="modal-product-image" type="file" accept="image/*" class="field-input image-input" />
+              <div id="modal-image-preview" class="image-preview" title="点击可清除">无图片</div>
+            </div>
+          </label>
+          <label class="field">
+            <span class="field-label">商品名称</span>
+            <input id="modal-product-name" type="text" class="field-input" placeholder="商品名称" />
+          </label>
+          <label class="field">
+            <span class="field-label">价格（元）</span>
+            <input id="modal-product-price" type="number" class="field-input" placeholder="19" min="0" step="0.01" />
+          </label>
+          <label class="field">
+            <span class="field-label">库存数量</span>
+            <input id="modal-product-stock" type="number" class="field-input" placeholder="99" min="0" step="1" />
+          </label>
+          <label class="field">
+            <span class="field-label">描述</span>
+            <textarea id="modal-product-desc" class="field-input" rows="3" placeholder="商品描述"></textarea>
+          </label>
+          <div class="modal-actions">
+            <button id="btn-modal-cancel" type="button" class="btn btn-ghost">取消</button>
+            <button id="btn-modal-save" type="button" class="btn btn-primary">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
+    <script src="admin.js"></script>
+  </body>
+</html>

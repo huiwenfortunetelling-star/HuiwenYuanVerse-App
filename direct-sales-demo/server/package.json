@@ -1,0 +1,16 @@
+{
+  "name": "huiwen-delivery-server",
+  "version": "1.0.0",
+  "description": "电子图片发货服务：购买后自动发邮件给客户",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "nodemailer": "^6.9.7"
+  }
+}
