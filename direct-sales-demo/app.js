@@ -1,4 +1,24 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const supabaseClient =
+  window.supabase &&
+  window.SUPABASE_URL &&
+  window.SUPABASE_PUBLISHABLE_KEY
+    ? window.supabase.createClient(
+        window.SUPABASE_URL,
+        window.SUPABASE_PUBLISHABLE_KEY,
+        {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+          },
+        }
+      )
+    : null;
+
+if (!supabaseClient) {
+  console.error('Supabase client could not be initialized.');
+}
   const screenAuth = document.getElementById('screen-auth');
   const screenMain = document.getElementById('screen-main');
   const logoutBtn = document.getElementById('btn-logout');
