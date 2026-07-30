@@ -217,80 +217,149 @@ if (!supabaseClient) {
     updateHeaderCurrentUser(null);
   }
 
-  function handleAuth() {
+  async function handleAuth() {
     const email = emailInput.value.trim();
     const password = passwordInput.value.trim();
     const referral = referralInput.value.trim();
-
+  
     if (!email || !password) {
-      alert('请输入邮箱和密码（Demo 仅做本地模拟）。');
+      alert('请输入邮箱和密码。');
       return;
     }
-
-    const allUsers = loadUsers();
-    let user = allUsers.find((u) => u.email === email);
-
-    if (user) {
-      if (user.password !== password) {
-        alert('密码错误，请重试。');
-        return;
-      }
+  
+    if (!supabaseClient) {
+      alert('登录服务暂时不可用，请稍后重试。');
+      return;
     }
-
-    if (!user) {
-      // 新用户：根据推荐码生成邀请码和上级关系
-      let referralCode;
-      let parentReferral = null;
-
-      if (referral) {
-        const parent = allUsers.find((u) => u.referralCode === referral);
-        if (parent) {
-          referralCode = generateChildReferralCode(allUsers, parent.referralCode);
-          parentReferral = parent.referralCode;
-        }
-        // 推荐码无效时（如本地数据已清空）仍允许注册为首位用户
-      }
-
-      if (!referralCode) {
-        referralCode = generateRootReferralCode(allUsers);
-      }
-
-      user = ensureUserFinancialFields({
+  
+    try {
+      let authUser = null;
+  
+      const {
+        data: signInData,
+        error: signInError,
+      } = await supabaseClient.auth.signInWithPassword({
         email,
         password,
-        referralCode,
-        parentReferral,
-        createdAt: new Date().toISOString(),
       });
-      allUsers.push(user);
-      if (parentReferral) {
-        const parent = allUsers.find((u) => u.referralCode === parentReferral);
-        if (parent) {
-          ensureUserFinancialFields(parent);
-          parent.points = Math.round((parent.points || 0) + POINTS_PER_REGISTRATION);
-        }
-      }
-      saveUsers(allUsers);
-    } else {
-      // 老用户：如果还没有绑定上级，这次登录又填写了有效推荐码，允许补绑一次上级
-      if (!user.parentReferral && referral) {
-        const parent = allUsers.find((u) => u.referralCode === referral);
-        if (!parent) {
-          alert('推荐码无效或不存在，请确认后再填写。');
+  
+      if (!signInError && signInData?.user) {
+        authUser = signInData.user;
+      } else {
+        const {
+          data: signUpData,
+          error: signUpError,
+        } = await supabaseClient.auth.signUp({
+          email,
+          password,
+        });
+  
+        if (signUpError) {
+          alert(signUpError.message || '注册失败，请稍后重试。');
           return;
         }
-        user.parentReferral = parent.referralCode;
-        saveUsers(allUsers);
+  
+        authUser = signUpData?.user || null;
+  
+        if (!authUser) {
+          alert('请检查邮箱并完成验证，然后再登录。');
+          return;
+        }
       }
+  
+      let {
+        data: profile,
+        error: profileError,
+      } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+  
+      if (profileError) {
+        console.error('Profile load error:', profileError);
+        alert('无法读取用户资料，请稍后重试。');
+        return;
+      }
+  
+      if (!profile) {
+        let parentReferral = null;
+  
+        if (referral) {
+          const {
+            data: parentProfile,
+            error: parentError,
+          } = await supabaseClient
+            .from('profiles')
+            .select('referral_code')
+            .eq('referral_code', referral)
+            .maybeSingle();
+  
+          if (parentError) {
+            console.error('Referral lookup error:', parentError);
+            alert('推荐码验证失败，请稍后重试。');
+            return;
+          }
+  
+          if (!parentProfile) {
+            alert('推荐码无效或不存在，请确认后再填写。');
+            return;
+          }
+  
+          parentReferral = parentProfile.referral_code;
+        }
+  
+        const referralCode =
+          'A' +
+          Math.random()
+            .toString(36)
+            .slice(2, 8)
+            .toUpperCase();
+  
+        const {
+          data: createdProfile,
+          error: createProfileError,
+        } = await supabaseClient
+          .from('profiles')
+          .insert({
+            id: authUser.id,
+            email,
+            referral_code: referralCode,
+            parent_referral: parentReferral,
+          })
+          .select()
+          .single();
+  
+        if (createProfileError) {
+          console.error('Profile creation error:', createProfileError);
+          alert('创建用户资料失败，请稍后重试。');
+          return;
+        }
+  
+        profile = createdProfile;
+      }
+  
+      const user = ensureUserFinancialFields({
+        id: profile.id,
+        email: profile.email,
+        referralCode: profile.referral_code,
+        parentReferral: profile.parent_referral,
+        totalCommission: Number(profile.total_commission || 0),
+        commissionBalance: Number(profile.commission_balance || 0),
+        points: Number(profile.points || 0),
+        createdAt: profile.created_at,
+      });
+  
+      saveCurrentUser(user);
+      showMainScreen();
+  
+      updateWalletSummary(user);
+      renderMyOrders();
+      initNetworkPanel();
+    } catch (error) {
+      console.error('Supabase auth error:', error);
+      alert('登录或注册失败，请稍后重试。');
     }
-
-    user = ensureUserFinancialFields(user);
-    saveCurrentUser(user);
-    showMainScreen();
-
-    updateWalletSummary(user);
-    renderMyOrders();
-    initNetworkPanel();
   }
 
   const btnWithdraw = document.getElementById('btn-withdraw');
@@ -1488,7 +1557,6 @@ purchaseModalProduct = null;
     renderNetwork(currentUser, networkSearchQuery, networkExpandedSet);
   }
 
-  // 使用事件委托，确保登录按钮在各种加载场景下都能响应
   document.body.addEventListener('click', (e) => {
     if (e.target.closest('#btn-login')) {
       e.preventDefault();
