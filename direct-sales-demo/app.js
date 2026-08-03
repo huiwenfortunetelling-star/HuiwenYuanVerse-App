@@ -200,6 +200,46 @@ document.addEventListener('DOMContentLoaded', () => {
     return records;
   }
 
+  async function syncWithdrawalsFromSupabase() {
+    if (!supabaseClient) return loadWithdrawals();
+
+    const { data, error } = await supabaseClient.rpc('get_my_withdrawals');
+    if (error) throw error;
+
+    const withdrawals = (Array.isArray(data) ? data : []).map((item) => ({
+      id: item.id,
+      email: item.email,
+      amount: Number(item.amount || 0),
+      status: item.status || 'pending',
+      createdAt: item.created_at,
+    }));
+
+    saveWithdrawals(withdrawals);
+    return withdrawals;
+  }
+
+  async function createWithdrawalRequest() {
+    if (!supabaseClient) {
+      throw new Error('Supabase is unavailable.');
+    }
+
+    const { error } = await supabaseClient.rpc('create_withdrawal_request');
+    if (error) throw error;
+
+    const [allUsers] = await Promise.all([
+      syncProfilesFromSupabase(),
+      syncWithdrawalsFromSupabase(),
+    ]);
+
+    const current = loadCurrentUser();
+    const updated = allUsers.find((user) => user.id === current?.id);
+
+    if (updated) {
+      saveCurrentUser(updated);
+      updateWalletSummary(updated);
+    }
+  }
+
   async function recordCompletedPurchase(product, buyerInfo, paypalOrderId) {
     const { error } = await supabaseClient.rpc('record_completed_purchase', {
       p_paypal_order_id: paypalOrderId,
@@ -432,6 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
         syncProfilesFromSupabase(),
         syncOrdersFromSupabase(),
         syncCommissionsFromSupabase(),
+        syncWithdrawalsFromSupabase(),
       ]);
       let user = allUsers.find((item) => item.id === authUser.id);
 
@@ -457,26 +498,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const btnWithdraw = document.getElementById('btn-withdraw');
   if (btnWithdraw) {
-    btnWithdraw.addEventListener('click', () => {
+    btnWithdraw.addEventListener('click', async () => {
       const user = loadCurrentUser();
       if (!user) return;
-      const balance = typeof user.commissionBalance === 'number' ? user.commissionBalance : 0;
+
+      const balance =
+        typeof user.commissionBalance === 'number'
+          ? user.commissionBalance
+          : 0;
+
       if (balance < WITHDRAW_THRESHOLD) {
-        alert(`需满 ￥${WITHDRAW_THRESHOLD} 可提现，当前余额 ￥${balance.toFixed(2)}。`);
+        alert(
+          `需满 ￥${WITHDRAW_THRESHOLD} 可申请提现，当前余额 ￥${balance.toFixed(2)}。`,
+        );
         return;
       }
-      if (!confirm(`确定提现 ￥${balance.toFixed(2)}？（Demo 仅扣减余额）`)) return;
-      const allUsers = loadUsers();
-      const idx = allUsers.findIndex((u) => u.email === user.email);
-      if (idx < 0) return;
-      allUsers[idx].commissionBalance = 0;
-      saveUsers(allUsers);
-      saveCurrentUser(allUsers[idx]);
-      const withdrawals = loadWithdrawals();
-      withdrawals.unshift({ email: user.email, amount: balance, createdAt: new Date().toISOString() });
-      saveWithdrawals(withdrawals);
-      updateWalletSummary(allUsers[idx]);
-      alert('提现成功！');
+
+      if (
+        !confirm(
+          `确定申请提现全部可用余额 ￥${balance.toFixed(2)}？提交后将进入审核。`,
+        )
+      ) {
+        return;
+      }
+
+      btnWithdraw.disabled = true;
+
+      try {
+        await createWithdrawalRequest();
+        alert('提现申请已提交，当前状态为待审核。');
+      } catch (error) {
+        const message = String(error?.message || '');
+
+        if (/minimum balance/i.test(message)) {
+          alert(`佣金余额需满 ￥${WITHDRAW_THRESHOLD} 才能申请提现。`);
+        } else if (/pending withdrawal/i.test(message)) {
+          alert('你已有一笔待审核的提现申请，请等待处理。');
+        } else if (/no available balance/i.test(message)) {
+          alert('目前没有可提现余额。');
+        } else {
+          alert('提现申请提交失败，请稍后重试。');
+        }
+      } finally {
+        btnWithdraw.disabled = false;
+      }
     });
   }
 
@@ -1349,8 +1414,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!withdrawals.length) {
         withdrawHistoryEl.innerHTML = '<span class="wallet-subtext">暂无提现记录</span>';
       } else {
+        const statusLabels = {
+          pending: '待审核',
+          approved: '已批准',
+          paid: '已支付',
+          rejected: '已拒绝',
+        };
+
         withdrawHistoryEl.innerHTML = withdrawals.slice(0, 10).map((w) =>
-          `<div class="withdraw-item">￥${w.amount.toFixed(2)} · ${formatDate(w.createdAt)}</div>`
+          `<div class="withdraw-item">￥${w.amount.toFixed(2)} · ${statusLabels[w.status] || w.status || '待审核'} · ${formatDate(w.createdAt)}</div>`
         ).join('');
       }
     }
@@ -1494,6 +1566,7 @@ document.addEventListener('DOMContentLoaded', () => {
         syncProfilesFromSupabase(),
         syncOrdersFromSupabase(),
         syncCommissionsFromSupabase(),
+        syncWithdrawalsFromSupabase(),
       ]);
       const user = allUsers.find((item) => item.id === session.user.id);
 
