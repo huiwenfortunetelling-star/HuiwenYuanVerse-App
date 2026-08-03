@@ -431,7 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
               ￥<span class="product-price-amount">${product.price}</span>
             </span>
             <button class="product-buy-btn" data-id="${product.id}" ${soldOut ? 'disabled' : ''}>
-              ${soldOut ? '已售罄' : '模拟购买'}
+              ${soldOut ? '已售罄' : '立即购买'}
             </button>
           </div>
         </div>
@@ -466,28 +466,189 @@ document.addEventListener('DOMContentLoaded', () => {
     modal.hidden = false;
   }
 
-  function initPurchaseModal() {
-    const modal = document.getElementById('purchase-modal');
-    const cancelBtn = document.getElementById('purchase-modal-cancel');
-    const confirmBtn = document.getElementById('purchase-modal-confirm');
-    const backdrop = document.querySelector('.purchase-modal-backdrop');
-    const closeModal = () => { if (modal) modal.hidden = true; purchaseModalProduct = null; };
-    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
-    if (backdrop) backdrop.addEventListener('click', closeModal);
-    if (confirmBtn) {
-      confirmBtn.addEventListener('click', () => {
-        const name = (document.getElementById('purchase-buyer-name')?.value || '').trim();
-        const dob = (document.getElementById('purchase-buyer-dob')?.value || '').trim();
-        const country = (document.getElementById('purchase-buyer-country')?.value || '').trim();
-        if (!name) { alert('请填写姓名。'); return; }
-        if (!dob) { alert('请选择出生年月日。'); return; }
-        if (!country) { alert('请填写来自的国家。'); return; }
-        const product = purchaseModalProduct;
-        closeModal();
-        if (product) handleDemoPurchase(product, { name, dob, country });
-      });
+  async function showPayPalPayment(product, buyerInfo) {
+      const paymentArea = document.getElementById('paypal-payment-area');
+      const buttonContainer = document.getElementById('paypal-button-container');
+      const message = document.getElementById('paypal-payment-message');
+      const actions = document.querySelector('.purchase-modal-actions');
+  
+      if (!paymentArea || !buttonContainer || !message) {
+        alert('PayPal payment area was not found.');
+        return;
+      }
+  
+      if (!window.PAYPAL_CLIENT_ID) {
+        alert('PayPal Client ID is unavailable.');
+        return;
+      }
+  
+      paymentArea.hidden = false;
+      buttonContainer.innerHTML = '';
+      message.textContent = '正在加载 PayPal…';
+  
+      if (actions) actions.hidden = true;
+  
+      try {
+        if (!window.paypal) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+  
+            script.src =
+              'https://www.paypal.com/sdk/js?client-id=' +
+              encodeURIComponent(window.PAYPAL_CLIENT_ID) +
+  '&currency=CAD&intent=capture&disable-funding=card,credit,paylater,venmo';
+          
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('PayPal SDK failed to load.'));
+  
+            document.head.appendChild(script);
+          });
+        }
+  
+        message.textContent = '请使用 PayPal 完成付款。';
+  
+       window.paypal
+    .Buttons({
+      fundingSource: window.paypal.FUNDING.PAYPAL,
+    
+            createOrder: async () => {
+              const response = await fetch('/api/paypal/create-order', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  productId: product.id,
+                }),
+              });
+  
+              const data = await response.json();
+  
+              if (!response.ok || !data.id) {
+                throw new Error(data.error || 'Unable to create PayPal order.');
+              }
+  
+              return data.id;
+            },
+  
+            onApprove: async (data) => {
+              message.textContent = '正在确认付款…';
+  
+              const response = await fetch('/api/paypal/capture-order', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  orderId: data.orderID,
+                }),
+              });
+  
+              const result = await response.json();
+  
+              if (!response.ok || result.status !== 'COMPLETED') {
+                throw new Error(result.error || 'Payment was not completed.');
+              }
+  
+              message.textContent = '付款成功。';
+  
+              handleDemoPurchase(product, buyerInfo);
+              const modal = document.getElementById('purchase-modal');
+  if (modal) modal.hidden = true;
+  purchaseModalProduct = null;
+            },
+  
+            onCancel: () => {
+              message.textContent = '付款已取消，您可以重新尝试。';
+            },
+  
+            onError: (error) => {
+              console.error('PayPal error:', error);
+              message.textContent = 'PayPal 付款出现问题，请稍后重试。';
+            },
+          })
+          .render('#paypal-button-container');
+      } catch (error) {
+        console.error('PayPal loading error:', error);
+        message.textContent = 'PayPal 无法加载，请稍后重试。';
+  
+        if (actions) actions.hidden = false;
+      }
     }
-  }
+
+  function initPurchaseModal() {
+      const modal = document.getElementById('purchase-modal');
+      const cancelBtn = document.getElementById('purchase-modal-cancel');
+      const confirmBtn = document.getElementById('purchase-modal-confirm');
+      const backdrop = document.querySelector('.purchase-modal-backdrop');
+      const paymentArea = document.getElementById('paypal-payment-area');
+      const buttonContainer = document.getElementById('paypal-button-container');
+      const message = document.getElementById('paypal-payment-message');
+      const actions = document.querySelector('.purchase-modal-actions');
+  
+      const closeModal = () => {
+        if (modal) modal.hidden = true;
+  
+        purchaseModalProduct = null;
+  
+        if (paymentArea) paymentArea.hidden = true;
+        if (buttonContainer) buttonContainer.innerHTML = '';
+        if (message) message.textContent = '';
+        if (actions) actions.hidden = false;
+      };
+  
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', closeModal);
+      }
+  
+      if (backdrop) {
+        backdrop.addEventListener('click', closeModal);
+      }
+  
+      if (confirmBtn) {
+        confirmBtn.addEventListener('click', () => {
+          const name = (
+            document.getElementById('purchase-buyer-name')?.value || ''
+          ).trim();
+  
+          const dob = (
+            document.getElementById('purchase-buyer-dob')?.value || ''
+          ).trim();
+  
+          const country = (
+            document.getElementById('purchase-buyer-country')?.value || ''
+          ).trim();
+  
+          if (!name) {
+            alert('请填写姓名。');
+            return;
+          }
+  
+          if (!dob) {
+            alert('请选择出生年月日。');
+            return;
+          }
+  
+          if (!country) {
+            alert('请填写来自的国家。');
+            return;
+          }
+  
+          const product = purchaseModalProduct;
+  
+          if (!product) {
+            alert('未找到商品信息，请重新选择商品。');
+            return;
+          }
+  
+          showPayPalPayment(product, {
+            name,
+            dob,
+            country,
+          });
+        });
+      }
+    }
 
   function loadOrders() {
     const raw = localStorage.getItem(STORAGE_KEY_ORDERS);
@@ -507,7 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function handleDemoPurchase(product, buyerInfo) {
     const current = loadCurrentUser();
     if (!current) {
-      alert('请先登录，再进行模拟购买。');
+      alert('请先登录，再进行购买。');
       return;
     }
 
