@@ -1,4 +1,25 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const supabaseClient =
+    window.supabase &&
+    window.SUPABASE_URL &&
+    window.SUPABASE_PUBLISHABLE_KEY
+      ? window.supabase.createClient(
+          window.SUPABASE_URL,
+          window.SUPABASE_PUBLISHABLE_KEY,
+          {
+            auth: {
+              persistSession: true,
+              autoRefreshToken: true,
+              detectSessionInUrl: true,
+            },
+          },
+        )
+      : null;
+
+  if (!supabaseClient) {
+    console.error('Supabase client could not be initialized.');
+  }
+
   const screenAuth = document.getElementById('screen-auth');
   const screenMain = document.getElementById('screen-main');
   const logoutBtn = document.getElementById('btn-logout');
@@ -91,6 +112,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function saveUsers(users) {
     localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+  }
+
+  function mapSupabaseProfile(profile) {
+    return ensureUserFinancialFields({
+      id: profile.id,
+      email: profile.email,
+      referralCode: profile.referral_code,
+      parentReferral: profile.parent_referral,
+      totalCommission: Number(profile.total_commission || 0),
+      commissionBalance: Number(profile.commission_balance || 0),
+      points: Number(profile.points || 0),
+      createdAt: profile.created_at,
+    });
+  }
+
+  async function syncProfilesFromSupabase() {
+    if (!supabaseClient) return loadUsers();
+
+    const { data, error } = await supabaseClient.rpc('get_app_profiles');
+    if (error) {
+      console.error('Profile sync error:', error);
+      throw error;
+    }
+
+    const users = Array.isArray(data) ? data.map(mapSupabaseProfile) : [];
+    saveUsers(users);
+    return users;
   }
 
   function ensureUserFinancialFields(user) {
@@ -197,80 +245,121 @@ document.addEventListener('DOMContentLoaded', () => {
     updateHeaderCurrentUser(null);
   }
 
-  function handleAuth() {
-    const email = emailInput.value.trim();
+  async function handleAuth() {
+    const email = emailInput.value.trim().toLowerCase();
     const password = passwordInput.value.trim();
-    const referral = referralInput.value.trim();
+    const referral = referralInput.value.trim().toUpperCase();
 
     if (!email || !password) {
-      alert('请输入邮箱和密码（Demo 仅做本地模拟）。');
+      alert('请输入邮箱和密码。');
       return;
     }
 
-    const allUsers = loadUsers();
-    let user = allUsers.find((u) => u.email === email);
-
-    if (user) {
-      if (user.password !== password) {
-        alert('密码错误，请重试。');
-        return;
-      }
+    if (!supabaseClient) {
+      alert('登录服务暂时不可用，请稍后重试。');
+      return;
     }
 
-    if (!user) {
-      // 新用户：根据推荐码生成邀请码和上级关系
-      let referralCode;
-      let parentReferral = null;
+    try {
+      let authUser = null;
 
-      if (referral) {
-        const parent = allUsers.find((u) => u.referralCode === referral);
-        if (parent) {
-          referralCode = generateChildReferralCode(allUsers, parent.referralCode);
-          parentReferral = parent.referralCode;
-        }
-        // 推荐码无效时（如本地数据已清空）仍允许注册为首位用户
-      }
-
-      if (!referralCode) {
-        referralCode = generateRootReferralCode(allUsers);
-      }
-
-      user = ensureUserFinancialFields({
+      const {
+        data: signInData,
+        error: signInError,
+      } = await supabaseClient.auth.signInWithPassword({
         email,
         password,
-        referralCode,
-        parentReferral,
-        createdAt: new Date().toISOString(),
       });
-      allUsers.push(user);
-      if (parentReferral) {
-        const parent = allUsers.find((u) => u.referralCode === parentReferral);
-        if (parent) {
-          ensureUserFinancialFields(parent);
-          parent.points = Math.round((parent.points || 0) + POINTS_PER_REGISTRATION);
-        }
-      }
-      saveUsers(allUsers);
-    } else {
-      // 老用户：如果还没有绑定上级，这次登录又填写了有效推荐码，允许补绑一次上级
-      if (!user.parentReferral && referral) {
-        const parent = allUsers.find((u) => u.referralCode === referral);
-        if (!parent) {
-          alert('推荐码无效或不存在，请确认后再填写。');
+
+      if (!signInError && signInData?.user) {
+        authUser = signInData.user;
+      } else {
+        const {
+          data: signUpData,
+          error: signUpError,
+        } = await supabaseClient.auth.signUp({
+          email,
+          password,
+        });
+
+        if (signUpError) {
+          const message = String(signUpError.message || '');
+          if (/already|registered|exists/i.test(message)) {
+            alert('该邮箱已经注册。请检查密码后重试，或使用“忘记密码”。');
+          } else {
+            alert(message || '注册失败，请稍后重试。');
+          }
           return;
         }
-        user.parentReferral = parent.referralCode;
-        saveUsers(allUsers);
+
+        authUser = signUpData?.user || null;
+
+        if (!authUser || !signUpData?.session) {
+          alert('请先完成邮箱验证，然后再登录。');
+          return;
+        }
       }
+
+      let {
+        data: profile,
+        error: profileError,
+      } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('Profile load error:', profileError);
+        alert('无法读取用户资料，请稍后重试。');
+        return;
+      }
+
+      if (!profile) {
+        const {
+          data: createdProfile,
+          error: createProfileError,
+        } = await supabaseClient.rpc('create_profile_with_referral', {
+          p_referral: referral || null,
+        });
+
+        if (createProfileError) {
+          console.error('Profile creation error:', createProfileError);
+          const message = String(createProfileError.message || '');
+          if (/invalid referral/i.test(message)) {
+            alert('推荐码无效或不存在，请确认后再填写。');
+          } else {
+            alert('创建用户资料失败，请稍后重试。');
+          }
+          return;
+        }
+
+        profile = Array.isArray(createdProfile)
+          ? createdProfile[0]
+          : createdProfile;
+      }
+
+      const allUsers = await syncProfilesFromSupabase();
+      let user = allUsers.find((item) => item.id === authUser.id);
+
+      if (!user && profile) {
+        user = mapSupabaseProfile(profile);
+      }
+
+      if (!user) {
+        alert('无法载入用户资料，请稍后重试。');
+        return;
+      }
+
+      saveCurrentUser(user);
+      showMainScreen();
+      updateWalletSummary(user);
+      renderMyOrders();
+      initNetworkPanel();
+    } catch (error) {
+      console.error('Supabase auth error:', error);
+      alert('登录或注册失败，请稍后重试。');
     }
-
-    user = ensureUserFinancialFields(user);
-    saveCurrentUser(user);
-    showMainScreen();
-
-    updateWalletSummary(user);
-    renderMyOrders();
-    initNetworkPanel();
   }
 
   const btnWithdraw = document.getElementById('btn-withdraw');
@@ -882,6 +971,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function recalculateAllPoints() {
+    if (supabaseClient) return;
     if (localStorage.getItem(STORAGE_KEY_POINTS_MIGRATION)) return;
     const allUsers = loadUsers();
     const orders = loadOrders();
@@ -1133,6 +1223,44 @@ document.addEventListener('DOMContentLoaded', () => {
     initNetworkPanel();
   }
 
+  async function initFromSupabaseSession() {
+    if (!supabaseClient) {
+      initFromStorage();
+      return;
+    }
+
+    try {
+      const {
+        data: { session },
+        error,
+      } = await supabaseClient.auth.getSession();
+
+      if (error || !session?.user) {
+        localStorage.removeItem(STORAGE_KEY_USER);
+        showAuthScreen();
+        return;
+      }
+
+      const allUsers = await syncProfilesFromSupabase();
+      const user = allUsers.find((item) => item.id === session.user.id);
+
+      if (!user) {
+        localStorage.removeItem(STORAGE_KEY_USER);
+        showAuthScreen();
+        return;
+      }
+
+      saveCurrentUser(user);
+      showMainScreen();
+      updateWalletSummary(user);
+      renderMyOrders();
+      initNetworkPanel();
+    } catch (error) {
+      console.error('Session restore error:', error);
+      showAuthScreen();
+    }
+  }
+
   const copyShareBtn = document.getElementById('btn-copy-share-link');
   if (copyShareBtn) {
     copyShareBtn.addEventListener('click', () => {
@@ -1318,7 +1446,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
+    logoutBtn.addEventListener('click', async () => {
+      if (supabaseClient) {
+        await supabaseClient.auth.signOut();
+      }
       localStorage.removeItem(STORAGE_KEY_USER);
       showAuthScreen();
     });
@@ -1393,35 +1524,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (submitResetBtn && resetEmailInput && resetPwdInput && resetPwdConfirmInput && resetMessage) {
-    submitResetBtn.addEventListener('click', () => {
-      const email = resetEmailInput.value.trim();
-      const newPwd = resetPwdInput.value;
-      const confirmPwd = resetPwdConfirmInput.value;
+  if (submitResetBtn && resetEmailInput && resetMessage) {
+    submitResetBtn.addEventListener('click', async () => {
+      const email = resetEmailInput.value.trim().toLowerCase();
 
       if (!email) {
         resetMessage.textContent = '请输入邮箱。';
         return;
       }
-      if (!newPwd || newPwd.length < 6) {
-        resetMessage.textContent = '新密码至少 6 位。';
-        return;
-      }
-      if (newPwd !== confirmPwd) {
-        resetMessage.textContent = '两次输入的密码不一致。';
+
+      if (!supabaseClient) {
+        resetMessage.textContent = '密码重置服务暂时不可用。';
         return;
       }
 
-      const allUsers = loadUsers();
-      const user = allUsers.find((u) => u.email === email);
-      if (!user) {
-        resetMessage.textContent = '该邮箱尚未注册，请先注册。';
-        return;
-      }
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
 
-      user.password = newPwd;
-      saveUsers(allUsers);
-      resetMessage.textContent = '密码已重置，请返回登录。';
+      resetMessage.textContent = error
+        ? (error.message || '发送失败，请稍后重试。')
+        : '密码重置邮件已发送，请检查邮箱。';
     });
   }
 
@@ -1429,6 +1552,5 @@ document.addEventListener('DOMContentLoaded', () => {
   renderProducts();
   initPurchaseModal();
   initBooking();
-  initFromStorage();
+  initFromSupabaseSession();
 });
-
