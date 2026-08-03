@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const STORAGE_KEY_ANNOUNCEMENT = 'huiwen_demo_announcement';
   const STORAGE_KEY_PRODUCTS = 'huiwen_demo_products';
   const STORAGE_KEY_ORDERS = 'huiwen_demo_orders';
+  const STORAGE_KEY_COMMISSIONS = 'huiwen_supabase_commissions';
   const STORAGE_KEY_WITHDRAWALS = 'huiwen_demo_withdrawals';
   const STORAGE_KEY_AI_FAQ = 'huiwen_demo_ai_faq';
   const STORAGE_KEY_AI_CHAT = 'huiwen_demo_ai_chat';
@@ -139,6 +140,94 @@ document.addEventListener('DOMContentLoaded', () => {
     const users = Array.isArray(data) ? data.map(mapSupabaseProfile) : [];
     saveUsers(users);
     return users;
+  }
+
+  function saveCommissionRecords(records) {
+    localStorage.setItem(STORAGE_KEY_COMMISSIONS, JSON.stringify(records || []));
+  }
+
+  function loadCommissionRecords() {
+    const raw = localStorage.getItem(STORAGE_KEY_COMMISSIONS);
+    if (!raw) return [];
+    try {
+      const records = JSON.parse(raw);
+      return Array.isArray(records) ? records : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function syncOrdersFromSupabase() {
+    if (!supabaseClient) return loadOrders();
+
+    const { data, error } = await supabaseClient.rpc('get_my_orders');
+    if (error) throw error;
+
+    const orders = (Array.isArray(data) ? data : []).map((order) => ({
+      id: order.id,
+      paypalOrderId: order.paypal_order_id,
+      buyerEmail: order.buyer_email,
+      buyerName: order.buyer_name || '',
+      buyerDob: order.buyer_dob || '',
+      buyerCountry: order.buyer_country || '',
+      productId: order.product_id,
+      productName: order.product_name,
+      price: Number(order.price || 0),
+      paymentStatus: order.payment_status,
+      shipped: Boolean(order.shipped),
+      createdAt: order.created_at,
+    }));
+
+    saveOrders(orders);
+    return orders;
+  }
+
+  async function syncCommissionsFromSupabase() {
+    if (!supabaseClient) return loadCommissionRecords();
+
+    const { data, error } = await supabaseClient.rpc('get_my_commissions');
+    if (error) throw error;
+
+    const records = (Array.isArray(data) ? data : []).map((item) => ({
+      buyerEmail: item.buyer_email,
+      buyerCode: item.buyer_code || '',
+      level: Number(item.level || 0),
+      commission: Number(item.amount || 0),
+      createdAt: item.created_at,
+    }));
+
+    saveCommissionRecords(records);
+    return records;
+  }
+
+  async function recordCompletedPurchase(product, buyerInfo, paypalOrderId) {
+    const { error } = await supabaseClient.rpc('record_completed_purchase', {
+      p_paypal_order_id: paypalOrderId,
+      p_product_id: product.id,
+      p_buyer_name: buyerInfo?.name || '',
+      p_buyer_dob: buyerInfo?.dob || null,
+      p_buyer_country: buyerInfo?.country || '',
+    });
+
+    if (error) throw error;
+
+    const [allUsers] = await Promise.all([
+      syncProfilesFromSupabase(),
+      syncOrdersFromSupabase(),
+      syncCommissionsFromSupabase(),
+    ]);
+
+    const current = loadCurrentUser();
+    const updated = allUsers.find((user) => user.id === current?.id);
+    if (updated) {
+      saveCurrentUser(updated);
+      updateWalletSummary(updated);
+    }
+
+    renderMyOrders();
+    if (typeof updateHumanConsultVisibility === 'function') {
+      updateHumanConsultVisibility();
+    }
   }
 
   function ensureUserFinancialFields(user) {
@@ -339,7 +428,11 @@ document.addEventListener('DOMContentLoaded', () => {
           : createdProfile;
       }
 
-      const allUsers = await syncProfilesFromSupabase();
+      const [allUsers] = await Promise.all([
+        syncProfilesFromSupabase(),
+        syncOrdersFromSupabase(),
+        syncCommissionsFromSupabase(),
+      ]);
       let user = allUsers.find((item) => item.id === authUser.id);
 
       if (!user && profile) {
@@ -550,9 +643,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(result.error || 'Payment was not completed.');
               }
   
-              message.textContent = '付款成功。';
-  
-              handleDemoPurchase(product, buyerInfo);
+              message.textContent = '付款成功，正在保存订单和佣金…';
+
+              await recordCompletedPurchase(product, buyerInfo, data.orderID);
+              message.textContent = '付款成功，订单和佣金已保存。';
               const modal = document.getElementById('purchase-modal');
   if (modal) modal.hidden = true;
   purchaseModalProduct = null;
@@ -1164,31 +1258,25 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getCommissionBreakdown(user) {
-    const orders = loadOrders();
-    const allUsers = loadUsers();
+    const records = loadCommissionRecords();
     const breakdown = {};
 
-    for (const order of orders) {
-      const buyer = allUsers.find((u) => u.email === order.buyerEmail);
-      if (!buyer) continue;
-
-      let parentCode = buyer.parentReferral;
-      for (let level = 0; level < COMMISSION_RATES.length && parentCode; level += 1) {
-        const parent = allUsers.find((u) => u.referralCode === parentCode);
-        if (!parent) break;
-        if (parent.email === user.email) {
-          const commission = (order.price || 0) * COMMISSION_RATES[level];
-          const key = order.buyerEmail;
-          if (!breakdown[key]) {
-            breakdown[key] = { buyerEmail: order.buyerEmail, buyerCode: buyer.referralCode || '', commission: 0, level: level + 1 };
-          }
-          breakdown[key].commission += commission;
-          break;
-        }
-        parentCode = parent.parentReferral;
+    records.forEach((item) => {
+      const key = `${item.buyerEmail || ''}-${item.level || 0}`;
+      if (!breakdown[key]) {
+        breakdown[key] = {
+          buyerEmail: item.buyerEmail || '',
+          buyerCode: item.buyerCode || '',
+          commission: 0,
+          level: item.level || 0,
+        };
       }
-    }
-    return Object.values(breakdown).sort((a, b) => b.commission - a.commission);
+      breakdown[key].commission += Number(item.commission || 0);
+    });
+
+    return Object.values(breakdown).sort(
+      (a, b) => b.commission - a.commission,
+    );
   }
 
   function updateWalletSummary(user) {
@@ -1402,7 +1490,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      const allUsers = await syncProfilesFromSupabase();
+      const [allUsers] = await Promise.all([
+        syncProfilesFromSupabase(),
+        syncOrdersFromSupabase(),
+        syncCommissionsFromSupabase(),
+      ]);
       const user = allUsers.find((item) => item.id === session.user.id);
 
       if (!user) {
@@ -1626,6 +1718,7 @@ document.addEventListener('DOMContentLoaded', () => {
       localStorage.removeItem(STORAGE_KEY_ANNOUNCEMENT);
       localStorage.removeItem(STORAGE_KEY_PRODUCTS);
       localStorage.removeItem(STORAGE_KEY_ORDERS);
+      localStorage.removeItem(STORAGE_KEY_COMMISSIONS);
       localStorage.removeItem(STORAGE_KEY_WITHDRAWALS);
       localStorage.removeItem(STORAGE_KEY_AI_FAQ);
       localStorage.removeItem(STORAGE_KEY_AI_CHAT);
