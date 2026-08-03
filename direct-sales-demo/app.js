@@ -1,24 +1,25 @@
 document.addEventListener('DOMContentLoaded', () => {
   const supabaseClient =
-  window.supabase &&
-  window.SUPABASE_URL &&
-  window.SUPABASE_PUBLISHABLE_KEY
-    ? window.supabase.createClient(
-        window.SUPABASE_URL,
-        window.SUPABASE_PUBLISHABLE_KEY,
-        {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true,
+    window.supabase &&
+    window.SUPABASE_URL &&
+    window.SUPABASE_PUBLISHABLE_KEY
+      ? window.supabase.createClient(
+          window.SUPABASE_URL,
+          window.SUPABASE_PUBLISHABLE_KEY,
+          {
+            auth: {
+              persistSession: true,
+              autoRefreshToken: true,
+              detectSessionInUrl: true,
+            },
           },
-        }
-      )
-    : null;
+        )
+      : null;
 
-if (!supabaseClient) {
-  console.error('Supabase client could not be initialized.');
-}
+  if (!supabaseClient) {
+    console.error('Supabase client could not be initialized.');
+  }
+
   const screenAuth = document.getElementById('screen-auth');
   const screenMain = document.getElementById('screen-main');
   const logoutBtn = document.getElementById('btn-logout');
@@ -111,6 +112,33 @@ if (!supabaseClient) {
 
   function saveUsers(users) {
     localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+  }
+
+  function mapSupabaseProfile(profile) {
+    return ensureUserFinancialFields({
+      id: profile.id,
+      email: profile.email,
+      referralCode: profile.referral_code,
+      parentReferral: profile.parent_referral,
+      totalCommission: Number(profile.total_commission || 0),
+      commissionBalance: Number(profile.commission_balance || 0),
+      points: Number(profile.points || 0),
+      createdAt: profile.created_at,
+    });
+  }
+
+  async function syncProfilesFromSupabase() {
+    if (!supabaseClient) return loadUsers();
+
+    const { data, error } = await supabaseClient.rpc('get_app_profiles');
+    if (error) {
+      console.error('Profile sync error:', error);
+      throw error;
+    }
+
+    const users = Array.isArray(data) ? data.map(mapSupabaseProfile) : [];
+    saveUsers(users);
+    return users;
   }
 
   function ensureUserFinancialFields(user) {
@@ -218,23 +246,23 @@ if (!supabaseClient) {
   }
 
   async function handleAuth() {
-    const email = emailInput.value.trim();
+    const email = emailInput.value.trim().toLowerCase();
     const password = passwordInput.value.trim();
-    const referral = referralInput.value.trim();
-  
+    const referral = referralInput.value.trim().toUpperCase();
+
     if (!email || !password) {
       alert('请输入邮箱和密码。');
       return;
     }
-  
+
     if (!supabaseClient) {
       alert('登录服务暂时不可用，请稍后重试。');
       return;
     }
-  
+
     try {
       let authUser = null;
-  
+
       const {
         data: signInData,
         error: signInError,
@@ -242,7 +270,7 @@ if (!supabaseClient) {
         email,
         password,
       });
-  
+
       if (!signInError && signInData?.user) {
         authUser = signInData.user;
       } else {
@@ -253,20 +281,25 @@ if (!supabaseClient) {
           email,
           password,
         });
-  
+
         if (signUpError) {
-          alert(signUpError.message || '注册失败，请稍后重试。');
+          const message = String(signUpError.message || '');
+          if (/already|registered|exists/i.test(message)) {
+            alert('该邮箱已经注册。请检查密码后重试，或使用“忘记密码”。');
+          } else {
+            alert(message || '注册失败，请稍后重试。');
+          }
           return;
         }
-  
+
         authUser = signUpData?.user || null;
-  
-        if (!authUser) {
-          alert('请检查邮箱并完成验证，然后再登录。');
+
+        if (!authUser || !signUpData?.session) {
+          alert('请先完成邮箱验证，然后再登录。');
           return;
         }
       }
-  
+
       let {
         data: profile,
         error: profileError,
@@ -275,84 +308,51 @@ if (!supabaseClient) {
         .select('*')
         .eq('id', authUser.id)
         .maybeSingle();
-  
+
       if (profileError) {
         console.error('Profile load error:', profileError);
         alert('无法读取用户资料，请稍后重试。');
         return;
       }
-  
+
       if (!profile) {
-        let parentReferral = null;
-  
-        if (referral) {
-          const {
-            data: parentProfile,
-            error: parentError,
-          } = await supabaseClient
-            .from('profiles')
-            .select('referral_code')
-            .eq('referral_code', referral)
-            .maybeSingle();
-  
-          if (parentError) {
-            console.error('Referral lookup error:', parentError);
-            alert('推荐码验证失败，请稍后重试。');
-            return;
-          }
-  
-          if (!parentProfile) {
-            alert('推荐码无效或不存在，请确认后再填写。');
-            return;
-          }
-  
-          parentReferral = parentProfile.referral_code;
-        }
-  
-        const referralCode =
-          'A' +
-          Math.random()
-            .toString(36)
-            .slice(2, 8)
-            .toUpperCase();
-  
         const {
           data: createdProfile,
           error: createProfileError,
-        } = await supabaseClient
-          .from('profiles')
-          .insert({
-            id: authUser.id,
-            email,
-            referral_code: referralCode,
-            parent_referral: parentReferral,
-          })
-          .select()
-          .single();
-  
+        } = await supabaseClient.rpc('create_profile_with_referral', {
+          p_referral: referral || null,
+        });
+
         if (createProfileError) {
           console.error('Profile creation error:', createProfileError);
-          alert('创建用户资料失败，请稍后重试。');
+          const message = String(createProfileError.message || '');
+          if (/invalid referral/i.test(message)) {
+            alert('推荐码无效或不存在，请确认后再填写。');
+          } else {
+            alert('创建用户资料失败，请稍后重试。');
+          }
           return;
         }
-  
-        profile = createdProfile;
+
+        profile = Array.isArray(createdProfile)
+          ? createdProfile[0]
+          : createdProfile;
       }
-  
-      const user = ensureUserFinancialFields({
-        id: profile.id,
-        email: profile.email,
-        referralCode: profile.referral_code,
-        parentReferral: profile.parent_referral,
-        totalCommission: Number(profile.total_commission || 0),
-        commissionBalance: Number(profile.commission_balance || 0),
-        points: Number(profile.points || 0),
-        createdAt: profile.created_at,
-      });
-  
+
+      const allUsers = await syncProfilesFromSupabase();
+      let user = allUsers.find((item) => item.id === authUser.id);
+
+      if (!user && profile) {
+        user = mapSupabaseProfile(profile);
+      }
+
+      if (!user) {
+        alert('无法载入用户资料，请稍后重试。');
+        return;
+      }
+
       saveCurrentUser(user);
       showMainScreen();
-  
       updateWalletSummary(user);
       renderMyOrders();
       initNetworkPanel();
@@ -465,185 +465,26 @@ if (!supabaseClient) {
     countryInput.value = '';
     modal.hidden = false;
   }
-  async function showPayPalPayment(product, buyerInfo) {
-    const paymentArea = document.getElementById('paypal-payment-area');
-    const buttonContainer = document.getElementById('paypal-button-container');
-    const message = document.getElementById('paypal-payment-message');
-    const actions = document.querySelector('.purchase-modal-actions');
-  
-    if (!paymentArea || !buttonContainer || !message) {
-      alert('PayPal payment area was not found.');
-      return;
-    }
-  
-    if (!window.PAYPAL_CLIENT_ID) {
-      alert('PayPal Client ID is unavailable.');
-      return;
-    }
-  
-    paymentArea.hidden = false;
-    buttonContainer.innerHTML = '';
-    message.textContent = '正在加载 PayPal…';
-  
-    if (actions) actions.hidden = true;
-  
-    try {
-      if (!window.paypal) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-  
-          script.src =
-            'https://www.paypal.com/sdk/js?client-id=' +
-            encodeURIComponent(window.PAYPAL_CLIENT_ID) +
-'&currency=CAD&intent=capture&disable-funding=card,credit,paylater,venmo';
-          
-          script.onload = resolve;
-          script.onerror = () => reject(new Error('PayPal SDK failed to load.'));
-  
-          document.head.appendChild(script);
-        });
-      }
-  
-      message.textContent = '请使用 PayPal 完成付款。';
-  
-     window.paypal
-  .Buttons({
-    fundingSource: window.paypal.FUNDING.PAYPAL,
-    
-          createOrder: async () => {
-            const response = await fetch('/api/paypal/create-order', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                productId: product.id,
-              }),
-            });
-  
-            const data = await response.json();
-  
-            if (!response.ok || !data.id) {
-              throw new Error(data.error || 'Unable to create PayPal order.');
-            }
-  
-            return data.id;
-          },
-  
-          onApprove: async (data) => {
-            message.textContent = '正在确认付款…';
-  
-            const response = await fetch('/api/paypal/capture-order', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                orderId: data.orderID,
-              }),
-            });
-  
-            const result = await response.json();
-  
-            if (!response.ok || result.status !== 'COMPLETED') {
-              throw new Error(result.error || 'Payment was not completed.');
-            }
-  
-            message.textContent = '付款成功。';
-  
-            handleDemoPurchase(product, buyerInfo);
-            const modal = document.getElementById('purchase-modal');
-if (modal) modal.hidden = true;
-purchaseModalProduct = null;
-          },
-  
-          onCancel: () => {
-            message.textContent = '付款已取消，您可以重新尝试。';
-          },
-  
-          onError: (error) => {
-            console.error('PayPal error:', error);
-            message.textContent = 'PayPal 付款出现问题，请稍后重试。';
-          },
-        })
-        .render('#paypal-button-container');
-    } catch (error) {
-      console.error('PayPal loading error:', error);
-      message.textContent = 'PayPal 无法加载，请稍后重试。';
-  
-      if (actions) actions.hidden = false;
-    }
-  }
+
   function initPurchaseModal() {
     const modal = document.getElementById('purchase-modal');
     const cancelBtn = document.getElementById('purchase-modal-cancel');
     const confirmBtn = document.getElementById('purchase-modal-confirm');
     const backdrop = document.querySelector('.purchase-modal-backdrop');
-    const paymentArea = document.getElementById('paypal-payment-area');
-    const buttonContainer = document.getElementById('paypal-button-container');
-    const message = document.getElementById('paypal-payment-message');
-    const actions = document.querySelector('.purchase-modal-actions');
-  
-    const closeModal = () => {
-      if (modal) modal.hidden = true;
-  
-      purchaseModalProduct = null;
-  
-      if (paymentArea) paymentArea.hidden = true;
-      if (buttonContainer) buttonContainer.innerHTML = '';
-      if (message) message.textContent = '';
-      if (actions) actions.hidden = false;
-    };
-  
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', closeModal);
-    }
-  
-    if (backdrop) {
-      backdrop.addEventListener('click', closeModal);
-    }
-  
+    const closeModal = () => { if (modal) modal.hidden = true; purchaseModalProduct = null; };
+    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+    if (backdrop) backdrop.addEventListener('click', closeModal);
     if (confirmBtn) {
       confirmBtn.addEventListener('click', () => {
-        const name = (
-          document.getElementById('purchase-buyer-name')?.value || ''
-        ).trim();
-  
-        const dob = (
-          document.getElementById('purchase-buyer-dob')?.value || ''
-        ).trim();
-  
-        const country = (
-          document.getElementById('purchase-buyer-country')?.value || ''
-        ).trim();
-  
-        if (!name) {
-          alert('请填写姓名。');
-          return;
-        }
-  
-        if (!dob) {
-          alert('请选择出生年月日。');
-          return;
-        }
-  
-        if (!country) {
-          alert('请填写来自的国家。');
-          return;
-        }
-  
+        const name = (document.getElementById('purchase-buyer-name')?.value || '').trim();
+        const dob = (document.getElementById('purchase-buyer-dob')?.value || '').trim();
+        const country = (document.getElementById('purchase-buyer-country')?.value || '').trim();
+        if (!name) { alert('请填写姓名。'); return; }
+        if (!dob) { alert('请选择出生年月日。'); return; }
+        if (!country) { alert('请填写来自的国家。'); return; }
         const product = purchaseModalProduct;
-  
-        if (!product) {
-          alert('未找到商品信息，请重新选择商品。');
-          return;
-        }
-  
-        showPayPalPayment(product, {
-          name,
-          dob,
-          country,
-        });
+        closeModal();
+        if (product) handleDemoPurchase(product, { name, dob, country });
       });
     }
   }
@@ -1130,6 +971,7 @@ purchaseModalProduct = null;
   }
 
   function recalculateAllPoints() {
+    if (supabaseClient) return;
     if (localStorage.getItem(STORAGE_KEY_POINTS_MIGRATION)) return;
     const allUsers = loadUsers();
     const orders = loadOrders();
@@ -1381,6 +1223,44 @@ purchaseModalProduct = null;
     initNetworkPanel();
   }
 
+  async function initFromSupabaseSession() {
+    if (!supabaseClient) {
+      initFromStorage();
+      return;
+    }
+
+    try {
+      const {
+        data: { session },
+        error,
+      } = await supabaseClient.auth.getSession();
+
+      if (error || !session?.user) {
+        localStorage.removeItem(STORAGE_KEY_USER);
+        showAuthScreen();
+        return;
+      }
+
+      const allUsers = await syncProfilesFromSupabase();
+      const user = allUsers.find((item) => item.id === session.user.id);
+
+      if (!user) {
+        localStorage.removeItem(STORAGE_KEY_USER);
+        showAuthScreen();
+        return;
+      }
+
+      saveCurrentUser(user);
+      showMainScreen();
+      updateWalletSummary(user);
+      renderMyOrders();
+      initNetworkPanel();
+    } catch (error) {
+      console.error('Session restore error:', error);
+      showAuthScreen();
+    }
+  }
+
   const copyShareBtn = document.getElementById('btn-copy-share-link');
   if (copyShareBtn) {
     copyShareBtn.addEventListener('click', () => {
@@ -1557,6 +1437,7 @@ purchaseModalProduct = null;
     renderNetwork(currentUser, networkSearchQuery, networkExpandedSet);
   }
 
+  // 使用事件委托，确保登录按钮在各种加载场景下都能响应
   document.body.addEventListener('click', (e) => {
     if (e.target.closest('#btn-login')) {
       e.preventDefault();
@@ -1565,7 +1446,10 @@ purchaseModalProduct = null;
   });
 
   if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
+    logoutBtn.addEventListener('click', async () => {
+      if (supabaseClient) {
+        await supabaseClient.auth.signOut();
+      }
       localStorage.removeItem(STORAGE_KEY_USER);
       showAuthScreen();
     });
@@ -1640,35 +1524,27 @@ purchaseModalProduct = null;
     });
   }
 
-  if (submitResetBtn && resetEmailInput && resetPwdInput && resetPwdConfirmInput && resetMessage) {
-    submitResetBtn.addEventListener('click', () => {
-      const email = resetEmailInput.value.trim();
-      const newPwd = resetPwdInput.value;
-      const confirmPwd = resetPwdConfirmInput.value;
+  if (submitResetBtn && resetEmailInput && resetMessage) {
+    submitResetBtn.addEventListener('click', async () => {
+      const email = resetEmailInput.value.trim().toLowerCase();
 
       if (!email) {
         resetMessage.textContent = '请输入邮箱。';
         return;
       }
-      if (!newPwd || newPwd.length < 6) {
-        resetMessage.textContent = '新密码至少 6 位。';
-        return;
-      }
-      if (newPwd !== confirmPwd) {
-        resetMessage.textContent = '两次输入的密码不一致。';
+
+      if (!supabaseClient) {
+        resetMessage.textContent = '密码重置服务暂时不可用。';
         return;
       }
 
-      const allUsers = loadUsers();
-      const user = allUsers.find((u) => u.email === email);
-      if (!user) {
-        resetMessage.textContent = '该邮箱尚未注册，请先注册。';
-        return;
-      }
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
 
-      user.password = newPwd;
-      saveUsers(allUsers);
-      resetMessage.textContent = '密码已重置，请返回登录。';
+      resetMessage.textContent = error
+        ? (error.message || '发送失败，请稍后重试。')
+        : '密码重置邮件已发送，请检查邮箱。';
     });
   }
 
@@ -1676,6 +1552,5 @@ purchaseModalProduct = null;
   renderProducts();
   initPurchaseModal();
   initBooking();
-  initFromStorage();
+  initFromSupabaseSession();
 });
-
