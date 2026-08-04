@@ -473,6 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
         syncOrdersFromSupabase(),
         syncCommissionsFromSupabase(),
         syncWithdrawalsFromSupabase(),
+        syncBookingsFromSupabase(),
       ]);
       let user = allUsers.find((item) => item.id === authUser.id);
 
@@ -949,6 +950,49 @@ document.addEventListener('DOMContentLoaded', () => {
     return loadOrders().some((o) => o.buyerEmail === email);
   }
 
+  async function syncBookingsFromSupabase() {
+    if (!supabaseClient) return loadBookings();
+
+    const { data, error } = await supabaseClient.rpc('get_my_bookings');
+    if (error) {
+      console.error('Booking sync error:', error);
+      throw error;
+    }
+
+    const bookings = (Array.isArray(data) ? data : []).map((item) => ({
+      id: item.id,
+      userEmail: item.user_email,
+      date: item.booking_date,
+      slot: item.booking_slot,
+      duration: Number(item.duration_minutes || 120),
+      status: item.status || 'pending',
+      notes: item.notes || '',
+      createdAt: item.created_at,
+    }));
+
+    saveBookings(bookings);
+    return bookings;
+  }
+
+  async function createBookingInSupabase(date, slot, duration) {
+    if (!supabaseClient) {
+      throw new Error('Supabase is unavailable.');
+    }
+
+    const { error } = await supabaseClient.rpc('create_booking', {
+      p_booking_date: date,
+      p_booking_slot: slot,
+      p_duration_minutes: duration,
+    });
+
+    if (error) {
+      console.error('Booking creation error:', error);
+      throw error;
+    }
+
+    await syncBookingsFromSupabase();
+  }
+
   function initBooking() {
     const bookingDuration = document.getElementById('booking-duration');
 
@@ -962,36 +1006,54 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (bookingBtn) {
-      bookingBtn.addEventListener('click', () => {
+      bookingBtn.addEventListener('click', async () => {
         const user = loadCurrentUser();
         if (!user) {
           if (bookingMessage) bookingMessage.textContent = '请先登录。';
           return;
         }
+
         const date = bookingDateInput.value;
         const slot = bookingSlotSelect.value;
-        const duration = parseInt((bookingDuration && bookingDuration.value) || '120', 10);
+        const duration = parseInt(
+          (bookingDuration && bookingDuration.value) || '120',
+          10,
+        );
 
         if (!date || !slot) {
-          if (bookingMessage) bookingMessage.textContent = '请选择预约日期和时间段。';
+          if (bookingMessage) {
+            bookingMessage.textContent = '请选择预约日期和时间段。';
+          }
           return;
         }
 
-        const booking = {
-          id: 'b' + Date.now(),
-          userEmail: user.email,
-          date,
-          slot,
-          duration,
-          createdAt: new Date().toISOString(),
-        };
+        bookingBtn.disabled = true;
 
-        const list = loadBookings();
-        list.push(booking);
-        saveBookings(list);
+        try {
+          await createBookingInSupabase(date, slot, duration);
+          if (bookingMessage) {
+            bookingMessage.textContent = '预约已提交，当前状态为待确认。';
+          }
+          renderMyBookings();
+        } catch (error) {
+          const message = String(error?.message || '');
 
-        if (bookingMessage) bookingMessage.textContent = '预约已保存。';
-        renderMyBookings();
+          if (/duplicate booking/i.test(message)) {
+            if (bookingMessage) {
+              bookingMessage.textContent = '这个时间段已经预约过了。';
+            }
+          } else if (/invalid booking date/i.test(message)) {
+            if (bookingMessage) {
+              bookingMessage.textContent = '预约日期必须是今天之后。';
+            }
+          } else {
+            if (bookingMessage) {
+              bookingMessage.textContent = '预约提交失败，请稍后重试。';
+            }
+          }
+        } finally {
+          bookingBtn.disabled = false;
+        }
       });
     }
 
@@ -1044,9 +1106,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     container.innerHTML = list.map((b) => {
       const canStart = canStartConsult(b);
+      const statusLabels = {
+        pending: '待确认',
+        confirmed: '已确认',
+        completed: '已完成',
+        cancelled: '已取消',
+      };
+
       return `<div class="booking-item-card" data-id="${b.id}">
         <span>${b.date} ${b.slot}</span>
         <span>${b.duration || 120} 分钟</span>
+        <span>${statusLabels[b.status] || b.status || '待确认'}</span>
         ${canStart ? `<button type="button" class="btn btn-ghost btn-small btn-start-consult" data-id="${b.id}">开始咨询</button>` : ''}
         <button type="button" class="btn btn-ghost btn-small btn-demo-consult" data-id="${b.id}" title="Demo 测试用，跳过时间检查">Demo 测试</button>
       </div>`;
@@ -1567,6 +1637,7 @@ document.addEventListener('DOMContentLoaded', () => {
         syncOrdersFromSupabase(),
         syncCommissionsFromSupabase(),
         syncWithdrawalsFromSupabase(),
+        syncBookingsFromSupabase(),
       ]);
       const user = allUsers.find((item) => item.id === session.user.id);
 
