@@ -1,4 +1,29 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const supabaseClient =
+    window.supabase &&
+    window.SUPABASE_URL &&
+    window.SUPABASE_PUBLISHABLE_KEY
+      ? window.supabase.createClient(
+          window.SUPABASE_URL,
+          window.SUPABASE_PUBLISHABLE_KEY,
+          {
+            auth: {
+              persistSession: true,
+              autoRefreshToken: true,
+              detectSessionInUrl: true,
+            },
+          },
+        )
+      : null;
+
+  const adminCache = {
+    users: [],
+    orders: [],
+    bookings: [],
+    withdrawals: [],
+    commissions: [],
+  };
+
   const STORAGE_ANNOUNCEMENT = 'huiwen_demo_announcement';
   let announcementPendingImage = null;
 
@@ -88,6 +113,86 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const DELIVERY_API_URL = ''; // 配置后发货时自动发邮件给客户，如 'http://localhost:3001'
 
+  function loadUsers() {
+    return adminCache.users;
+  }
+
+  function loadOrdersAdmin() {
+    return adminCache.orders;
+  }
+
+  function loadBookingsAdmin() {
+    return adminCache.bookings;
+  }
+
+  function loadWithdrawalsAdmin() {
+    return adminCache.withdrawals;
+  }
+
+  async function refreshAdminData() {
+    if (!supabaseClient) throw new Error('Supabase unavailable');
+
+    const { data, error } = await supabaseClient.rpc('admin_get_dashboard_data');
+    if (error) throw error;
+
+    const payload = data || {};
+
+    adminCache.users = (payload.users || []).map((u) => ({
+      id: u.id,
+      email: u.email,
+      referralCode: u.referral_code,
+      parentReferral: u.parent_referral,
+      totalCommission: Number(u.total_commission || 0),
+      commissionBalance: Number(u.commission_balance || 0),
+      points: Number(u.points || 0),
+      createdAt: u.created_at,
+    }));
+
+    adminCache.orders = (payload.orders || []).map((o) => ({
+      id: o.id,
+      paypalOrderId: o.paypal_order_id,
+      buyerEmail: o.buyer_email,
+      buyerName: o.buyer_name || '',
+      buyerDob: o.buyer_dob || '',
+      buyerCountry: o.buyer_country || '',
+      productId: o.product_id,
+      productName: o.product_name,
+      price: Number(o.price || 0),
+      paymentStatus: o.payment_status || '',
+      shipped: Boolean(o.shipped),
+      createdAt: o.created_at,
+    }));
+
+    adminCache.bookings = (payload.bookings || []).map((b) => ({
+      id: b.id,
+      userEmail: b.user_email,
+      date: b.booking_date,
+      slot: b.booking_slot,
+      duration: Number(b.duration_minutes || 120),
+      status: b.status || 'pending',
+      notes: b.notes || '',
+      createdAt: b.created_at,
+    }));
+
+    adminCache.withdrawals = (payload.withdrawals || []).map((w) => ({
+      id: w.id,
+      email: w.email,
+      amount: Number(w.amount || 0),
+      status: w.status || 'pending',
+      createdAt: w.created_at,
+    }));
+
+    adminCache.commissions = payload.commissions || [];
+  }
+
+  async function checkAdminAccess() {
+    if (!supabaseClient) return false;
+    const { data, error } = await supabaseClient.rpc('admin_check_access');
+    if (error) return false;
+    return Boolean(data);
+  }
+
+
   const DEFAULT_PRODUCTS = [
     { id: 'p1', name: '静心山水 · 电子图片', price: 19, stock: 99, desc: '柔和山水意境，适合做手机壁纸、冥想背景图。' },
     { id: 'p2', name: '东方禅意 · 电子图片', price: 29, stock: 99, desc: '极简线条与留白，适合做网络头像、社交封面。' },
@@ -139,35 +244,15 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem(STORAGE_PRODUCTS, JSON.stringify(products));
   }
 
-  function loadUsers() {
-    const raw = localStorage.getItem(STORAGE_USERS);
-    if (!raw) return [];
-    try {
-      const list = JSON.parse(raw);
-      return Array.isArray(list) ? list : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function checkAdminAuth() {
-    const pwd = localStorage.getItem(STORAGE_ADMIN_PWD);
-    if (pwd) {
-      setupForm.hidden = true;
-      loginForm.hidden = false;
-    } else {
-      setupForm.hidden = false;
-      loginForm.hidden = true;
-    }
-  }
-
-  function showMain() {
+  async function showMain() {
     loginScreen.classList.remove('admin-screen--active');
     loginScreen.hidden = true;
     mainScreen.classList.remove('admin-screen--active');
     mainScreen.hidden = false;
     mainScreen.classList.add('admin-screen--active');
-    mainScreen.hidden = false;
+
+    await refreshAdminData();
+
     renderProductsPanel();
     renderOrdersPanel();
     renderUsersPanel();
@@ -181,41 +266,92 @@ document.addEventListener('DOMContentLoaded', () => {
     mainScreen.hidden = true;
     loginScreen.classList.add('admin-screen--active');
     loginScreen.hidden = false;
-    if (setupPasswordInput) setupPasswordInput.value = '';
     if (adminPasswordInput) adminPasswordInput.value = '';
   }
 
-  btnSetup.addEventListener('click', () => {
-    const pwd = setupPasswordInput.value.trim();
-    if (!pwd || pwd.length < 6) {
-      alert('密码至少 6 位。');
-      return;
-    }
-    localStorage.setItem(STORAGE_ADMIN_PWD, pwd);
-    showMain();
-  });
+  if (setupForm) setupForm.hidden = true;
+  if (loginForm) loginForm.hidden = false;
 
-  btnAdminLogin.addEventListener('click', () => {
-    const pwd = (adminPasswordInput?.value || '').trim();
-    const stored = localStorage.getItem(STORAGE_ADMIN_PWD);
-    if (!pwd) {
-      alert('请输入密码。');
-      return;
-    }
-    if (pwd !== stored) {
-      alert('密码错误，请重试。');
-      return;
-    }
-    showMain();
-  });
+  const adminEmailInput =
+    document.getElementById('admin-email') ||
+    (() => {
+      const label = document.createElement('label');
+      label.className = 'field';
+      const caption = document.createElement('span');
+      caption.className = 'field-label';
+      caption.textContent = '管理员邮箱';
+      const input = document.createElement('input');
+      input.id = 'admin-email';
+      input.type = 'email';
+      input.className = 'field-input';
+      input.placeholder = '请输入管理员邮箱';
+      label.appendChild(caption);
+      label.appendChild(input);
+      loginForm?.insertBefore(label, loginForm.firstChild);
+      return input;
+    })();
 
-  btnAdminLogout.addEventListener('click', () => {
-    const pwd = localStorage.getItem(STORAGE_ADMIN_PWD);
-    if (pwd) {
+  async function checkAdminAuth() {
+    if (!supabaseClient) {
+      alert('Supabase 未加载。请使用线上管理后台。');
       showLogin();
-      checkAdminAuth();
+      return;
     }
-  });
+
+    const { data: { session } } = await supabaseClient.auth.getSession();
+
+    if (!session?.user) {
+      showLogin();
+      return;
+    }
+
+    if (await checkAdminAccess()) {
+      await showMain();
+      return;
+    }
+
+    await supabaseClient.auth.signOut();
+    alert('此账号没有管理员权限。');
+    showLogin();
+  }
+
+  if (btnAdminLogin) {
+    btnAdminLogin.addEventListener('click', async () => {
+      const email = (adminEmailInput?.value || '').trim().toLowerCase();
+      const password = (adminPasswordInput?.value || '').trim();
+
+      if (!email || !password) {
+        alert('请输入管理员邮箱和密码。');
+        return;
+      }
+
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        alert('登录失败，请检查邮箱和密码。');
+        return;
+      }
+
+      if (!(await checkAdminAccess())) {
+        await supabaseClient.auth.signOut();
+        alert('此账号没有管理员权限。');
+        return;
+      }
+
+      await showMain();
+    });
+  }
+
+  if (btnAdminLogout) {
+    btnAdminLogout.addEventListener('click', async () => {
+      if (supabaseClient) await supabaseClient.auth.signOut();
+      showLogin();
+    });
+  }
+
 
   const navBtns = document.querySelectorAll('.admin-nav-btn');
   const panels = document.querySelectorAll('.admin-panel');
@@ -730,8 +866,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renderVerificationConfigInputs();
 
-    const raw = localStorage.getItem(STORAGE_ORDERS);
-    const list = raw ? JSON.parse(raw) : [];
+    const list = loadOrdersAdmin();
 
     const pendingCount = list.filter((o) => !o.shipped).length;
     if (badgeEl) {
@@ -835,8 +970,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function openShipModal(orderId) {
     shipModalOrderId = orderId;
     shipModalPendingImage = null;
-    const raw = localStorage.getItem(STORAGE_ORDERS);
-    const list = raw ? JSON.parse(raw) : [];
+    const list = loadOrdersAdmin();
     const order = list.find((o) => o.id === orderId);
     const infoEl = document.getElementById('ship-modal-order-info');
     const previewEl = document.getElementById('ship-modal-preview');
@@ -899,20 +1033,28 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelBtn?.addEventListener('click', closeShipModal);
     modal?.querySelector('.modal-backdrop')?.addEventListener('click', closeShipModal);
 
-    confirmBtn.addEventListener('click', () => {
+    confirmBtn.addEventListener('click', async () => {
       if (!shipModalOrderId || !shipModalPendingImage) return;
-      const raw = localStorage.getItem(STORAGE_ORDERS);
-      const list = raw ? JSON.parse(raw) : [];
+      const list = loadOrdersAdmin();
       const idx = list.findIndex((o) => o.id === shipModalOrderId);
       if (idx < 0) {
         alert('订单不存在');
         return;
       }
       const order = list[idx];
+
+      const { error: shipError } = await supabaseClient.rpc('admin_update_order_shipped', {
+        p_order_id: order.id,
+        p_shipped: true,
+      });
+      if (shipError) {
+        alert('更新发货状态失败。');
+        return;
+      }
+
       order.deliveredImage = shipModalPendingImage;
       order.shipped = true;
       order.shippedAt = new Date().toISOString();
-      localStorage.setItem(STORAGE_ORDERS, JSON.stringify(list));
 
       const vCfg = loadVerificationConfig();
       if (vCfg.api) {
@@ -974,9 +1116,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = {
         products: loadProducts(),
         users: loadUsers(),
-        orders: JSON.parse(localStorage.getItem(STORAGE_ORDERS) || '[]'),
-        bookings: JSON.parse(localStorage.getItem(STORAGE_BOOKINGS) || '[]'),
-        withdrawals: JSON.parse(localStorage.getItem(STORAGE_WITHDRAWALS) || '[]'),
+        orders: loadOrdersAdmin(),
+        bookings: loadBookingsAdmin(),
+        withdrawals: loadWithdrawalsAdmin(),
         announcement: localStorage.getItem(STORAGE_ANNOUNCEMENT) || '',
         aiFaq: loadAiFaq(),
         aiChatRecords: loadAiChatRecords(),
@@ -1124,21 +1266,55 @@ document.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById('booking-list-admin');
     if (!container) return;
 
-    const raw = localStorage.getItem(STORAGE_BOOKINGS);
-    const list = raw ? JSON.parse(raw) : [];
+    const list = [...loadBookingsAdmin()];
 
     if (!list.length) {
       container.innerHTML = '<p style="color:var(--text-muted);font-size:0.84rem">暂无预约记录。</p>';
       return;
     }
 
+    const labels = {
+      pending: '待确认',
+      confirmed: '已确认',
+      completed: '已完成',
+      cancelled: '已取消',
+    };
+
     container.innerHTML = list
-      .reverse()
       .map(
-        (b) => `<div class="booking-item">${b.date} ${b.slot} · ${b.duration || 120}分钟${b.userEmail ? ' · ' + b.userEmail : ''}</div>`,
+        (b) => `<div class="booking-item" data-booking-id="${b.id}">
+          <div>${b.date || ''} ${b.slot || ''} · ${b.duration || 120}分钟${b.userEmail ? ' · ' + b.userEmail : ''}</div>
+          <div style="margin-top:8px">
+            <select class="field-input booking-status-select" data-booking-id="${b.id}">
+              ${['pending', 'confirmed', 'completed', 'cancelled']
+                .map(
+                  (status) =>
+                    `<option value="${status}" ${b.status === status ? 'selected' : ''}>${labels[status]}</option>`,
+                )
+                .join('')}
+            </select>
+          </div>
+        </div>`,
       )
       .join('');
+
+    container.querySelectorAll('.booking-status-select').forEach((select) => {
+      select.addEventListener('change', async () => {
+        const { error } = await supabaseClient.rpc('admin_update_booking_status', {
+          p_booking_id: select.dataset.bookingId,
+          p_status: select.value,
+        });
+
+        if (error) {
+          alert('更新预约状态失败。');
+          return;
+        }
+
+        await refreshAdminData();
+        renderBookingsPanel();
+      });
+    });
   }
 
-  checkAdminAuth();
+  await checkAdminAuth();
 });
