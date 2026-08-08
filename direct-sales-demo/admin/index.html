@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>管理后台 - Huiwen 直销 Demo</title>
-    <link rel="stylesheet" href="admin.css" />
+    <link rel="stylesheet" href="/admin/admin.css" />
   </head>
   <body>
     <div class="admin-app">
@@ -12,20 +12,18 @@
       <section id="admin-login" class="admin-screen admin-screen--active">
         <div class="admin-card">
           <h1 class="admin-title">管理后台</h1>
-          <p class="admin-tip">Demo：首次使用请设置管理员密码，之后用该密码登录。</p>
+          <p class="admin-tip">请使用已授权的管理员账号登录。</p>
 
-          <div id="setup-form" class="auth-form">
+          <div id="setup-form" class="auth-form" hidden></div>
+
+          <div id="login-form" class="auth-form">
             <label class="field">
-              <span class="field-label">设置管理员密码</span>
-              <input id="setup-password" type="password" class="field-input" placeholder="至少 6 位" />
+              <span class="field-label">管理员邮箱</span>
+              <input id="admin-email" type="email" class="field-input" placeholder="请输入管理员邮箱" autocomplete="username" />
             </label>
-            <button id="btn-setup" type="button" class="btn btn-primary">保存并进入</button>
-          </div>
-
-          <div id="login-form" class="auth-form" hidden>
             <label class="field">
               <span class="field-label">管理员密码</span>
-              <input id="admin-password" type="password" class="field-input" placeholder="请输入密码" />
+              <input id="admin-password" type="password" class="field-input" placeholder="请输入密码" autocomplete="current-password" />
             </label>
             <button id="btn-admin-login" type="button" class="btn btn-primary">登录</button>
           </div>
@@ -244,6 +242,8 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
-    <script src="admin.js"></script>
+    <script src="/api/supabase/config"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/admin/admin.js"></script>
   </body>
 </html>
