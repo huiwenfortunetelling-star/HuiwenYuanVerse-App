@@ -29,6 +29,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const referralInput = document.getElementById('auth-referral');
   const loginBtn = document.getElementById('btn-login');
 
+  // Today's small UI additions are injected here so index.html can stay unchanged.
+  ensureGenderField();
+  ensureCartShell();
+
   const tabButtons = document.querySelectorAll('.tab-bar .tab');
   const tabPanels = document.querySelectorAll('.tab-panel');
 
@@ -49,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const STORAGE_KEY_PRODUCTS = 'huiwen_demo_products';
   const STORAGE_KEY_ORDERS = 'huiwen_demo_orders';
   const STORAGE_KEY_COMMISSIONS = 'huiwen_supabase_commissions';
+  const STORAGE_KEY_CART = 'huiwen_supabase_cart';
   const STORAGE_KEY_WITHDRAWALS = 'huiwen_demo_withdrawals';
   const STORAGE_KEY_AI_FAQ = 'huiwen_demo_ai_faq';
   const STORAGE_KEY_AI_CHAT = 'huiwen_demo_ai_chat';
@@ -69,6 +74,267 @@ document.addEventListener('DOMContentLoaded', () => {
     { id: 'p2', name: '东方禅意 · 电子图片', price: 29, stock: 99, desc: '极简线条与留白，适合做网络头像、社交封面。' },
     { id: 'p3', name: '城市夜景 · 电子图片', price: 39, stock: 99, desc: '高对比夜色光影，适合作为电脑桌面或宣传素材。' },
   ];
+
+
+  function ensureGenderField() {
+    if (document.getElementById('purchase-buyer-gender')) return;
+
+    const actions = document.querySelector('.purchase-modal-actions');
+    if (!actions || !actions.parentNode) return;
+
+    const field = document.createElement('label');
+    field.className = 'field';
+    field.innerHTML = `
+      <span class="field-label">性别</span>
+      <select id="purchase-buyer-gender" class="field-input">
+        <option value="">请选择</option>
+        <option value="男">男</option>
+        <option value="女">女</option>
+      </select>
+    `;
+    actions.parentNode.insertBefore(field, actions);
+  }
+
+  function ensureCartShell() {
+    const tabBar = document.querySelector('.tab-bar');
+    const productsTab = tabBar?.querySelector('[data-tab="products"]');
+    const productsPanel = document.getElementById('tab-products');
+    if (!tabBar || !productsTab || !productsPanel) return;
+
+    if (!document.querySelector('[data-tab="cart"]')) {
+      const cartTab = document.createElement('button');
+      cartTab.type = 'button';
+      cartTab.dataset.tab = 'cart';
+      cartTab.className = 'tab';
+      cartTab.innerHTML = `购物车 <span id="cart-tab-count" class="cart-tab-count">0</span>`;
+      productsTab.insertAdjacentElement('afterend', cartTab);
+    }
+
+    if (!document.getElementById('tab-cart')) {
+      const cartPanel = document.createElement('section');
+      cartPanel.id = 'tab-cart';
+      cartPanel.className = 'tab-panel';
+      cartPanel.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">购物车</h2>
+              <p class="card-subtitle">已加入购物车的商品会保存在您的账号中。</p>
+            </div>
+          </div>
+          <div id="cart-list" class="cart-list"></div>
+          <div class="cart-summary">
+            <span>合计</span>
+            <strong id="cart-total">￥0.00</strong>
+          </div>
+        </div>
+      `;
+      productsPanel.insertAdjacentElement('afterend', cartPanel);
+
+      cartPanel.addEventListener('click', async (event) => {
+        const buyBtn = event.target.closest('.cart-buy-btn');
+        if (buyBtn) {
+          const product = loadProducts().find((p) => p.id === buyBtn.dataset.productId);
+          if (product) openPurchaseModal(product, true);
+          return;
+        }
+
+        const removeBtn = event.target.closest('.cart-remove-btn');
+        if (removeBtn) {
+          await removeProductFromCart(removeBtn.dataset.productId);
+        }
+      });
+    }
+
+    if (!document.getElementById('huiwen-cart-styles')) {
+      const style = document.createElement('style');
+      style.id = 'huiwen-cart-styles';
+      style.textContent = `
+        .product-action-group{display:flex;gap:.55rem;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+        .product-cart-btn{border:1px solid rgba(224,177,78,.65);background:transparent;color:#e0b14e;border-radius:999px;padding:.52rem .9rem;cursor:pointer}
+        .product-cart-btn:disabled{opacity:.45;cursor:not-allowed}
+        .cart-tab-count{display:inline-flex;min-width:1.35rem;height:1.35rem;padding:0 .35rem;align-items:center;justify-content:center;border-radius:999px;background:rgba(224,177,78,.18);font-size:.75rem;margin-left:.25rem}
+        .cart-list{display:grid;gap:.75rem}
+        .cart-empty{color:var(--text-muted,#9aa3b5);padding:1rem 0}
+        .cart-item{display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:center;padding:1rem;border:1px solid rgba(255,255,255,.08);border-radius:14px}
+        .cart-item-title{font-weight:700;margin-bottom:.25rem}
+        .cart-item-meta{color:var(--text-muted,#9aa3b5);font-size:.9rem}
+        .cart-item-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+        .cart-buy-btn,.cart-remove-btn{border-radius:999px;padding:.52rem .9rem;cursor:pointer}
+        .cart-buy-btn{border:0;background:linear-gradient(90deg,#d8aa4a,#f2d48a);color:#111}
+        .cart-remove-btn{border:1px solid rgba(224,177,78,.5);background:transparent;color:#e0b14e}
+        .cart-summary{display:flex;justify-content:space-between;align-items:center;margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.08);font-size:1rem}
+        @media (max-width:640px){.cart-item{grid-template-columns:1fr}.cart-item-actions{justify-content:flex-start}.product-action-group{justify-content:flex-start}}
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  function saveCartItems(items) {
+    localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(items || []));
+  }
+
+  function loadCartItems() {
+    const raw = localStorage.getItem(STORAGE_KEY_CART);
+    if (!raw) return [];
+    try {
+      const items = JSON.parse(raw);
+      return Array.isArray(items) ? items : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function updateCartCount() {
+    const el = document.getElementById('cart-tab-count');
+    if (el) el.textContent = String(loadCartItems().length);
+  }
+
+  async function syncCartFromSupabase() {
+    if (!supabaseClient) {
+      updateCartCount();
+      return loadCartItems();
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseClient.auth.getUser();
+
+    if (userError || !user) {
+      saveCartItems([]);
+      updateCartCount();
+      return [];
+    }
+
+    const { data, error } = await supabaseClient
+      .from('cart_items')
+      .select('product_id, quantity, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    const items = (Array.isArray(data) ? data : []).map((item) => ({
+      productId: item.product_id,
+      quantity: Number(item.quantity || 1),
+      createdAt: item.created_at,
+    }));
+
+    saveCartItems(items);
+    updateCartCount();
+    return items;
+  }
+
+  async function addProductToCart(productId) {
+    if (!supabaseClient) {
+      alert('购物车服务暂时不可用。');
+      return;
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseClient.auth.getUser();
+
+    if (userError || !user) {
+      alert('请先登录，再加入购物车。');
+      return;
+    }
+
+    const { error } = await supabaseClient
+      .from('cart_items')
+      .upsert(
+        {
+          user_id: user.id,
+          product_id: productId,
+          quantity: 1,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id,product_id',
+          ignoreDuplicates: true,
+        },
+      );
+
+    if (error) {
+      console.error('Add to cart error:', error);
+      alert('加入购物车失败，请稍后重试。');
+      return;
+    }
+
+    await syncCartFromSupabase();
+    renderCart();
+    alert('已加入购物车。');
+  }
+
+  async function removeProductFromCart(productId, showMessage = true) {
+    if (!supabaseClient) return;
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseClient.auth.getUser();
+
+    if (userError || !user) return;
+
+    const { error } = await supabaseClient
+      .from('cart_items')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('product_id', productId);
+
+    if (error) {
+      console.error('Remove cart item error:', error);
+      if (showMessage) alert('删除失败，请稍后重试。');
+      return;
+    }
+
+    await syncCartFromSupabase();
+    renderCart();
+    if (showMessage) alert('已从购物车删除。');
+  }
+
+  function renderCart() {
+    const container = document.getElementById('cart-list');
+    const totalEl = document.getElementById('cart-total');
+    if (!container) return;
+
+    const items = loadCartItems();
+    const products = loadProducts();
+
+    const rows = items
+      .map((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        return product ? { item, product } : null;
+      })
+      .filter(Boolean);
+
+    if (!rows.length) {
+      container.innerHTML = '<div class="cart-empty">购物车还是空的。</div>';
+      if (totalEl) totalEl.textContent = '￥0.00';
+      updateCartCount();
+      return;
+    }
+
+    const total = rows.reduce((sum, row) => sum + Number(row.product.price || 0), 0);
+
+    container.innerHTML = rows.map(({ product }) => `
+      <div class="cart-item" data-product-id="${product.id}">
+        <div>
+          <div class="cart-item-title">${String(product.name || '商品').replace(/</g, '&lt;')}</div>
+          <div class="cart-item-meta">￥${Number(product.price || 0).toFixed(2)}</div>
+        </div>
+        <div class="cart-item-actions">
+          <button type="button" class="cart-buy-btn" data-product-id="${product.id}">立即购买</button>
+          <button type="button" class="cart-remove-btn" data-product-id="${product.id}">删除</button>
+        </div>
+      </div>
+    `).join('');
+
+    if (totalEl) totalEl.textContent = `￥${total.toFixed(2)}`;
+    updateCartCount();
+  }
 
   function loadProducts() {
     const raw = localStorage.getItem(STORAGE_KEY_PRODUCTS);
@@ -170,6 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
       buyerName: order.buyer_name || '',
       buyerDob: order.buyer_dob || '',
       buyerCountry: order.buyer_country || '',
+      buyerGender: order.buyer_gender || '',
       productId: order.product_id,
       productName: order.product_name,
       price: Number(order.price || 0),
@@ -247,6 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
       p_buyer_name: buyerInfo?.name || '',
       p_buyer_dob: buyerInfo?.dob || null,
       p_buyer_country: buyerInfo?.country || '',
+      p_buyer_gender: buyerInfo?.gender || '',
     });
 
     if (error) throw error;
@@ -474,6 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
         syncCommissionsFromSupabase(),
         syncWithdrawalsFromSupabase(),
         syncBookingsFromSupabase(),
+        syncCartFromSupabase(),
       ]);
       let user = allUsers.find((item) => item.id === authUser.id);
 
@@ -490,6 +759,7 @@ document.addEventListener('DOMContentLoaded', () => {
       showMainScreen();
       updateWalletSummary(user);
       renderMyOrders();
+      renderCart();
       initNetworkPanel();
     } catch (error) {
       console.error('Supabase auth error:', error);
@@ -564,6 +834,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target === 'support' && typeof updateHumanConsultVisibility === 'function') {
           updateHumanConsultVisibility();
         }
+
+        if (target === 'cart') {
+          syncCartFromSupabase()
+            .then(() => renderCart())
+            .catch((error) => {
+              console.error('Cart refresh error:', error);
+              renderCart();
+            });
+        }
       });
     });
   }
@@ -589,16 +868,27 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="product-price">
               ￥<span class="product-price-amount">${product.price}</span>
             </span>
-            <button class="product-buy-btn" data-id="${product.id}" ${soldOut ? 'disabled' : ''}>
-              ${soldOut ? '已售罄' : '立即购买'}
-            </button>
+            <div class="product-action-group">
+              <button class="product-cart-btn" data-id="${product.id}" ${soldOut ? 'disabled' : ''}>
+                ${soldOut ? '已售罄' : '加入购物车'}
+              </button>
+              <button class="product-buy-btn" data-id="${product.id}" ${soldOut ? 'disabled' : ''}>
+                ${soldOut ? '已售罄' : '立即购买'}
+              </button>
+            </div>
           </div>
         </div>
       `;
       productList.appendChild(card);
     });
 
-    productList.addEventListener('click', (event) => {
+    productList.addEventListener('click', async (event) => {
+      const cartBtn = event.target.closest('.product-cart-btn');
+      if (cartBtn && !cartBtn.disabled) {
+        await addProductToCart(cartBtn.dataset.id);
+        return;
+      }
+
       const btn = event.target.closest('.product-buy-btn');
       if (!btn || btn.disabled) return;
 
@@ -606,22 +896,29 @@ document.addEventListener('DOMContentLoaded', () => {
       const product = loadProducts().find((p) => p.id === productId);
       if (!product) return;
 
-      openPurchaseModal(product);
+      openPurchaseModal(product, false);
     });
   }
 
   let purchaseModalProduct = null;
+  let purchaseFromCartProductId = null;
 
-  function openPurchaseModal(product) {
+  function openPurchaseModal(product, fromCart = false) {
     purchaseModalProduct = product;
+    purchaseFromCartProductId = fromCart ? product.id : null;
+
     const modal = document.getElementById('purchase-modal');
     const nameInput = document.getElementById('purchase-buyer-name');
     const dobInput = document.getElementById('purchase-buyer-dob');
     const countryInput = document.getElementById('purchase-buyer-country');
-    if (!modal || !nameInput || !dobInput || !countryInput) return;
+    const genderInput = document.getElementById('purchase-buyer-gender');
+
+    if (!modal || !nameInput || !dobInput || !countryInput || !genderInput) return;
+
     nameInput.value = '';
     dobInput.value = '';
     countryInput.value = '';
+    genderInput.value = '';
     modal.hidden = false;
   }
 
@@ -712,6 +1009,12 @@ document.addEventListener('DOMContentLoaded', () => {
               message.textContent = '付款成功，正在保存订单和佣金…';
 
               await recordCompletedPurchase(product, buyerInfo, data.orderID);
+
+              if (purchaseFromCartProductId) {
+                await removeProductFromCart(purchaseFromCartProductId, false);
+                purchaseFromCartProductId = null;
+              }
+
               message.textContent = '付款成功，订单和佣金已保存。';
               const modal = document.getElementById('purchase-modal');
   if (modal) modal.hidden = true;
@@ -750,6 +1053,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modal) modal.hidden = true;
   
         purchaseModalProduct = null;
+        purchaseFromCartProductId = null;
   
         if (paymentArea) paymentArea.hidden = true;
         if (buttonContainer) buttonContainer.innerHTML = '';
@@ -778,6 +1082,10 @@ document.addEventListener('DOMContentLoaded', () => {
           const country = (
             document.getElementById('purchase-buyer-country')?.value || ''
           ).trim();
+
+          const gender = (
+            document.getElementById('purchase-buyer-gender')?.value || ''
+          ).trim();
   
           if (!name) {
             alert('请填写姓名。');
@@ -793,6 +1101,11 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('请填写来自的国家。');
             return;
           }
+
+          if (!gender) {
+            alert('请选择性别。');
+            return;
+          }
   
           const product = purchaseModalProduct;
   
@@ -805,6 +1118,7 @@ document.addEventListener('DOMContentLoaded', () => {
             name,
             dob,
             country,
+            gender,
           });
         });
       }
@@ -889,6 +1203,7 @@ document.addEventListener('DOMContentLoaded', () => {
       buyerName: buyerInfo?.name || '',
       buyerDob: buyerInfo?.dob || '',
       buyerCountry: buyerInfo?.country || '',
+      buyerGender: buyerInfo?.gender || '',
     };
     const orders = loadOrders();
     orders.unshift(order);
@@ -1638,6 +1953,7 @@ document.addEventListener('DOMContentLoaded', () => {
         syncCommissionsFromSupabase(),
         syncWithdrawalsFromSupabase(),
         syncBookingsFromSupabase(),
+        syncCartFromSupabase(),
       ]);
       const user = allUsers.find((item) => item.id === session.user.id);
 
@@ -1651,6 +1967,7 @@ document.addEventListener('DOMContentLoaded', () => {
       showMainScreen();
       updateWalletSummary(user);
       renderMyOrders();
+      renderCart();
       initNetworkPanel();
     } catch (error) {
       console.error('Session restore error:', error);
@@ -1848,6 +2165,9 @@ document.addEventListener('DOMContentLoaded', () => {
         await supabaseClient.auth.signOut();
       }
       localStorage.removeItem(STORAGE_KEY_USER);
+      localStorage.removeItem(STORAGE_KEY_CART);
+      updateCartCount();
+      renderCart();
       showAuthScreen();
     });
   }
@@ -1948,6 +2268,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initTabs();
   renderProducts();
+  renderCart();
   initPurchaseModal();
   initBooking();
   initFromSupabaseSession();
