@@ -155,6 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       buyerName: o.buyer_name || '',
       buyerDob: o.buyer_dob || '',
       buyerCountry: o.buyer_country || '',
+      buyerGender: o.buyer_gender || '',
       productId: o.product_id,
       productName: o.product_name,
       price: Number(o.price || 0),
@@ -645,16 +646,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const roots = users.filter((u) => !u.parentReferral || u.parentReferral === '');
 
     const totalEl = document.getElementById('user-stats-total') || document.querySelector('.user-stats-total');
+    const emailsLabelEl = document.querySelector('.user-stats-emails-label');
     const emailsListEl = document.getElementById('user-emails-list');
+
     if (totalEl) totalEl.textContent = '总用户数：' + users.length + ' 人';
+    if (emailsLabelEl) emailsLabelEl.style.display = 'none';
     if (emailsListEl) {
-      if (!users.length) {
-        emailsListEl.innerHTML = '<span class="user-emails-empty">暂无用户</span>';
-      } else {
-        emailsListEl.innerHTML = users.map((u) =>
-          `<span class="user-email-chip">${u.email || '—'} <small>${u.referralCode || ''}</small></span>`
-        ).join('');
-      }
+      emailsListEl.innerHTML = '';
+      emailsListEl.style.display = 'none';
     }
 
     if (!users.length) {
@@ -904,6 +903,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         n: o.buyerName || '',
         d: o.buyerDob || '',
         c: o.buyerCountry || '',
+        g: o.buyerGender || '',
         t: o.createdAt || '',
       };
       return JSON.stringify(payload);
@@ -913,7 +913,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const qrPayload = qrPayloadFor(o);
       const statusClass = o.shipped ? 'order-shipped' : 'order-pending';
       const statusText = o.shipped ? '已发货' : '待制作';
-      const buyerInfo = [o.buyerName, o.buyerDob, o.buyerCountry].filter(Boolean).join(' · ') || '—';
+      const buyerInfo = [o.buyerName, o.buyerDob, o.buyerCountry, o.buyerGender].filter(Boolean).join(' · ') || '—';
       return `<div class="order-item-admin ${statusClass}" data-order-id="${(o.id || '').replace(/"/g, '&quot;')}">
         <div class="order-qr-wrap">
           <div class="order-qr-code" data-qr-payload></div>
