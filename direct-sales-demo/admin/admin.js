@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bookings: [],
     withdrawals: [],
     commissions: [],
+    products: [],
   };
 
   const STORAGE_ANNOUNCEMENT = 'huiwen_demo_announcement';
@@ -230,19 +231,82 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem(STORAGE_VERIFICATION, JSON.stringify(cfg));
   }
 
-  function loadProducts() {
+  const STORAGE_PRODUCTS_MIGRATED = 'huiwen_products_supabase_migrated_v1';
+
+  function loadLocalProductsForMigration() {
     const raw = localStorage.getItem(STORAGE_PRODUCTS);
-    if (!raw) return DEFAULT_PRODUCTS;
+    if (!raw) return null;
     try {
       const list = JSON.parse(raw);
-      return Array.isArray(list) && list.length ? list : DEFAULT_PRODUCTS;
+      return Array.isArray(list) && list.length ? list : null;
     } catch {
-      return DEFAULT_PRODUCTS;
+      return null;
     }
   }
 
-  function saveProducts(products) {
-    localStorage.setItem(STORAGE_PRODUCTS, JSON.stringify(products));
+  function loadProducts() {
+    return adminCache.products;
+  }
+
+  function mapSupabaseProduct(p) {
+    return {
+      id: p.id,
+      name: p.name || '',
+      price: Number(p.price || 0),
+      stock: Number.isFinite(Number(p.stock)) ? Number(p.stock) : 0,
+      desc: p.description || '',
+      image: p.image_url || undefined,
+      active: p.active !== false,
+      createdAt: p.created_at || null,
+      updatedAt: p.updated_at || null,
+      sortOrder: Number(p.sort_order || 0),
+    };
+  }
+
+  async function refreshProductsFromSupabase() {
+    if (!supabaseClient) throw new Error('Supabase unavailable');
+
+    const { data, error } = await supabaseClient.rpc('admin_get_products');
+    if (error) throw error;
+
+    adminCache.products = (Array.isArray(data) ? data : []).map(mapSupabaseProduct);
+    return adminCache.products;
+  }
+
+  async function upsertProductToSupabase(product) {
+    const { data, error } = await supabaseClient.rpc('admin_upsert_product', {
+      p_id: product.id || null,
+      p_name: product.name || '',
+      p_description: product.desc || '',
+      p_price: Number(product.price || 0),
+      p_stock: Number.isFinite(Number(product.stock)) ? Number(product.stock) : 0,
+      p_image_url: product.image || null,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function archiveProductInSupabase(productId) {
+    const { error } = await supabaseClient.rpc('admin_archive_product', {
+      p_id: productId,
+    });
+    if (error) throw error;
+  }
+
+  async function initializeCentralProducts() {
+    await refreshProductsFromSupabase();
+
+    const migrated = localStorage.getItem(STORAGE_PRODUCTS_MIGRATED) === '1';
+    const localProducts = loadLocalProductsForMigration();
+
+    // One-time migration of the boss's existing browser-local product list.
+    if (!migrated && localProducts && localProducts.length) {
+      for (const product of localProducts) {
+        await upsertProductToSupabase(product);
+      }
+      localStorage.setItem(STORAGE_PRODUCTS_MIGRATED, '1');
+      await refreshProductsFromSupabase();
+    }
   }
 
   async function showMain() {
@@ -253,6 +317,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     mainScreen.classList.add('admin-screen--active');
 
     await refreshAdminData();
+    await initializeCentralProducts();
 
     renderProductsPanel();
     renderOrdersPanel();
@@ -407,13 +472,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     container.querySelectorAll('.btn-delete-product').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const item = btn.closest('.product-item-admin');
         const id = item.dataset.id;
         if (!confirm('确定删除该商品？')) return;
-        const newList = products.filter((x) => x.id !== id);
-        saveProducts(newList);
-        renderProductsPanel();
+
+        btn.disabled = true;
+        try {
+          await archiveProductInSupabase(id);
+          await refreshProductsFromSupabase();
+          renderProductsPanel();
+        } catch (error) {
+          console.error('Delete product error:', error);
+          alert('删除商品失败，请稍后重试。');
+          btn.disabled = false;
+        }
       });
     });
   }
@@ -498,11 +571,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  btnModalSave.addEventListener('click', () => {
+  btnModalSave.addEventListener('click', async () => {
     const name = modalName.value.trim();
     const price = parseFloat(modalPrice.value);
     const stockRaw = modalStock?.value;
-    const stock = stockRaw === '' || stockRaw === undefined ? undefined : Math.max(0, parseInt(stockRaw, 10) || 0);
+    const stock = stockRaw === '' || stockRaw === undefined ? 0 : Math.max(0, parseInt(stockRaw, 10) || 0);
     const desc = modalDesc.value.trim();
 
     if (!name) {
@@ -526,24 +599,28 @@ document.addEventListener('DOMContentLoaded', async () => {
       image = null;
     }
 
-    if (editingProductId) {
-      const idx = products.findIndex((p) => p.id === editingProductId);
-      if (idx >= 0) {
-        products[idx] = { ...products[idx], name, price, desc, image: image || undefined };
-        if (stock !== undefined) products[idx].stock = stock;
-      }
-    } else {
-      const maxId = products.reduce((max, p) => {
-        const n = parseInt(String(p.id).replace(/\D/g, ''), 10) || 0;
-        return Math.max(max, n);
-      }, 0);
-      const newId = `p${maxId + 1}`;
-      products.push({ id: newId, name, price, stock: stock ?? 0, desc, image: image || undefined });
-    }
+    const product = {
+      id: editingProductId || null,
+      name,
+      price,
+      stock,
+      desc,
+      image,
+    };
 
-    saveProducts(products);
-    closeProductModal();
-    renderProductsPanel();
+    btnModalSave.disabled = true;
+    try {
+      await upsertProductToSupabase(product);
+      await refreshProductsFromSupabase();
+      closeProductModal();
+      renderProductsPanel();
+      alert(editingProductId ? '商品已更新。' : '商品已新增。');
+    } catch (error) {
+      console.error('Save product error:', error);
+      alert('保存商品失败，请稍后重试。');
+    } finally {
+      btnModalSave.disabled = false;
+    }
   });
 
   function getDirectChildren(parentCode, users) {
@@ -818,13 +895,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   const btnClearProductImages = document.getElementById('btn-clear-product-images');
   if (btnClearProductImages) {
-    btnClearProductImages.addEventListener('click', () => {
+    btnClearProductImages.addEventListener('click', async () => {
       if (!confirm('确定清除所有商品的图片？商品名称、价格等会保留。')) return;
-      const products = loadProducts();
-      products.forEach((p) => { delete p.image; });
-      saveProducts(products);
-      renderProductsPanel();
-      alert('已清除所有商品图片。');
+
+      btnClearProductImages.disabled = true;
+      try {
+        const products = loadProducts();
+        for (const p of products) {
+          await upsertProductToSupabase({ ...p, image: null });
+        }
+        await refreshProductsFromSupabase();
+        renderProductsPanel();
+        alert('已清除所有商品图片。');
+      } catch (error) {
+        console.error('Clear product images error:', error);
+        alert('清除商品图片失败，请稍后重试。');
+      } finally {
+        btnClearProductImages.disabled = false;
+      }
     });
   }
 
