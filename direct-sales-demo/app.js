@@ -348,7 +348,41 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function saveProducts(products) {
-    localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products));
+    localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products || []));
+  }
+
+  function mapSupabaseProduct(product) {
+    return {
+      id: product.id,
+      name: product.name || '',
+      price: Number(product.price || 0),
+      stock: Number.isFinite(Number(product.stock)) ? Number(product.stock) : 0,
+      desc: product.description || '',
+      image: product.image_url || undefined,
+      active: product.active !== false,
+      createdAt: product.created_at || null,
+      updatedAt: product.updated_at || null,
+      sortOrder: Number(product.sort_order || 0),
+    };
+  }
+
+  async function syncProductsFromSupabase() {
+    if (!supabaseClient) return loadProducts();
+
+    const { data, error } = await supabaseClient.rpc('get_active_products');
+    if (error) {
+      console.error('Product sync error:', error);
+      throw error;
+    }
+
+    const products = (Array.isArray(data) ? data : []).map(mapSupabaseProduct);
+    if (products.length) {
+      saveProducts(products);
+      return products;
+    }
+
+    // Do not erase a usable local cache if the database temporarily returns no rows.
+    return loadProducts();
   }
 
   function saveCurrentUser(user) {
@@ -743,6 +777,7 @@ document.addEventListener('DOMContentLoaded', () => {
         syncWithdrawalsFromSupabase(),
         syncBookingsFromSupabase(),
         syncCartFromSupabase(),
+        syncProductsFromSupabase(),
       ]);
       let user = allUsers.find((item) => item.id === authUser.id);
 
@@ -758,6 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
       saveCurrentUser(user);
       showMainScreen();
       updateWalletSummary(user);
+      renderProducts();
       renderMyOrders();
       renderCart();
       initNetworkPanel();
@@ -835,8 +871,22 @@ document.addEventListener('DOMContentLoaded', () => {
           updateHumanConsultVisibility();
         }
 
+        if (target === 'products') {
+          syncProductsFromSupabase()
+            .then(() => {
+              renderProducts();
+              renderCart();
+            })
+            .catch((error) => {
+              console.error('Product refresh error:', error);
+            });
+        }
+
         if (target === 'cart') {
-          syncCartFromSupabase()
+          Promise.all([
+            syncProductsFromSupabase(),
+            syncCartFromSupabase(),
+          ])
             .then(() => renderCart())
             .catch((error) => {
               console.error('Cart refresh error:', error);
@@ -882,22 +932,25 @@ document.addEventListener('DOMContentLoaded', () => {
       productList.appendChild(card);
     });
 
-    productList.addEventListener('click', async (event) => {
-      const cartBtn = event.target.closest('.product-cart-btn');
-      if (cartBtn && !cartBtn.disabled) {
-        await addProductToCart(cartBtn.dataset.id);
-        return;
-      }
+    if (!productList.dataset.productListenerAdded) {
+      productList.dataset.productListenerAdded = '1';
+      productList.addEventListener('click', async (event) => {
+        const cartBtn = event.target.closest('.product-cart-btn');
+        if (cartBtn && !cartBtn.disabled) {
+          await addProductToCart(cartBtn.dataset.id);
+          return;
+        }
 
-      const btn = event.target.closest('.product-buy-btn');
-      if (!btn || btn.disabled) return;
+        const btn = event.target.closest('.product-buy-btn');
+        if (!btn || btn.disabled) return;
 
-      const productId = btn.dataset.id;
-      const product = loadProducts().find((p) => p.id === productId);
-      if (!product) return;
+        const productId = btn.dataset.id;
+        const product = loadProducts().find((p) => p.id === productId);
+        if (!product) return;
 
-      openPurchaseModal(product, false);
-    });
+        openPurchaseModal(product, false);
+      });
+    }
   }
 
   let purchaseModalProduct = null;
@@ -1954,6 +2007,7 @@ document.addEventListener('DOMContentLoaded', () => {
         syncWithdrawalsFromSupabase(),
         syncBookingsFromSupabase(),
         syncCartFromSupabase(),
+        syncProductsFromSupabase(),
       ]);
       const user = allUsers.find((item) => item.id === session.user.id);
 
@@ -1966,6 +2020,7 @@ document.addEventListener('DOMContentLoaded', () => {
       saveCurrentUser(user);
       showMainScreen();
       updateWalletSummary(user);
+      renderProducts();
       renderMyOrders();
       renderCart();
       initNetworkPanel();
