@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .home-row-arrow{width:2.1rem;height:2.1rem;border-radius:999px;border:1px solid rgba(224,177,78,.45);background:rgba(224,177,78,.06);color:#e7bd62;font-size:1.35rem;line-height:1;cursor:pointer}
         .home-row-arrow:hover{background:rgba(224,177,78,.14)}
         .home-announcement-row{display:flex;gap:1rem;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;scrollbar-width:thin;scrollbar-color:rgba(224,177,78,.55) rgba(255,255,255,.04);padding:.1rem 0 .7rem}
-        .home-announcement-card{position:relative;flex:0 0 clamp(260px,42vw,430px);aspect-ratio:16/9;border-radius:22px;overflow:hidden;border:1px solid rgba(224,177,78,.22);background:#0a0a0d;scroll-snap-align:start;box-shadow:0 14px 35px rgba(0,0,0,.2);text-decoration:none}
+        .home-announcement-card{position:relative;flex:0 0 320px;aspect-ratio:16/9;border-radius:22px;overflow:hidden;border:1px solid rgba(224,177,78,.22);background:#0a0a0d;scroll-snap-align:start;box-shadow:0 14px 35px rgba(0,0,0,.2);text-decoration:none}
         .home-announcement-card img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .25s ease,filter .25s ease}
         .home-announcement-card:hover img{transform:scale(1.025);filter:brightness(1.04)}
         .home-announcement-card::after{content:'';position:absolute;inset:auto 0 0;height:22%;background:linear-gradient(transparent,rgba(0,0,0,.28));pointer-events:none}
