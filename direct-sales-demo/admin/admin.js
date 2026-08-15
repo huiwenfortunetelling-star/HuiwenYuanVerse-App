@@ -23,10 +23,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     withdrawals: [],
     commissions: [],
     products: [],
+    announcements: [],
   };
 
   const STORAGE_ANNOUNCEMENT = 'huiwen_demo_announcement';
+  const STORAGE_ANNOUNCEMENT_MIGRATED = 'huiwen_announcements_migrated_v1';
+  const ANNOUNCEMENT_BUCKET = 'announcement-images';
   let announcementPendingImage = null;
+  let announcementEditingId = null;
+  let announcementEditingImageUrl = '';
+  let announcementEditingImagePath = null;
 
   function compressImage(file, maxSize, quality) {
     return new Promise((resolve) => {
@@ -62,44 +68,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  window.saveAnnouncementClick = function () {
-    const textEl = document.getElementById('admin-announcement');
-    const text = String(textEl && textEl.value ? textEl.value : '').trim();
-    const image = announcementPendingImage;
-
+  window.saveAnnouncementClick = async function () {
+    const button = document.getElementById('btn-save-announcement');
+    if (button) button.disabled = true;
     try {
-      const data = { text, image };
-      const json = JSON.stringify(data);
-      if (json.length > 4 * 1024 * 1024) {
-        alert('保存失败：内容过大（含图片约 ' + Math.round(json.length / 1024) + 'KB），请使用较小的图片。');
-        return;
-      }
-      localStorage.setItem(STORAGE_ANNOUNCEMENT, json);
-    } catch (err) {
-      if (err.name === 'QuotaExceededError' || err.code === 22) {
-        alert('保存失败：存储空间不足，请删除部分商品图片或使用较小的公告图片。');
-      } else {
-        alert('保存失败：' + (err.message || err));
-      }
-      return;
+      await saveAnnouncementFromCms();
+    } catch (error) {
+      console.error('Save announcement error:', error);
+      alert(error?.message || '公告保存失败，请稍后重试。');
+    } finally {
+      if (button) button.disabled = false;
     }
-
-    const recordEl = document.getElementById('announcement-record-content');
-    if (recordEl) {
-      try {
-        if (!text && !image) {
-          recordEl.innerHTML = '<span class="announcement-record-empty">暂无公告</span>';
-        } else {
-          let html = '';
-          if (image) html += '<img src="' + image.replace(/"/g, '&quot;') + '" alt="公告图片" class="announcement-record-img" />';
-          if (text) html += '<div class="announcement-record-text">' + String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>') + '</div>';
-          recordEl.innerHTML = html;
-        }
-      } catch (e) {
-        recordEl.textContent = text || '(已保存，预览显示异常)';
-      }
-    }
-    alert('保存成功！');
   };
 
   const STORAGE_ADMIN_PWD = 'huiwen_demo_admin_pwd';
@@ -318,6 +297,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await refreshAdminData();
     await initializeCentralProducts();
+    await initializeAnnouncementsCms();
 
     renderProductsPanel();
     renderOrdersPanel();
@@ -805,7 +785,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target && e.target.id === 'user-tree-search') handleUserTreeSearch();
   });
 
-  function loadAnnouncement() {
+  function escapeAnnouncementHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function loadLegacyAnnouncement() {
     const raw = localStorage.getItem(STORAGE_ANNOUNCEMENT);
     if (!raw) return { text: '', image: null };
     try {
@@ -817,31 +806,230 @@ document.addEventListener('DOMContentLoaded', async () => {
     return { text: raw, image: null };
   }
 
-  function saveAnnouncement(data) {
-    localStorage.setItem(STORAGE_ANNOUNCEMENT, JSON.stringify(data));
+  function ensureAnnouncementCmsShell() {
+    const panel = document.getElementById('panel-announcement');
+    const imageInput = document.getElementById('admin-announcement-image');
+    if (!panel || !imageInput) return;
+
+    const tip = panel.querySelector('.panel-tip');
+    if (tip) {
+      tip.textContent = '上传图片、选择分类并填写正文。发布后会自动显示在前台首页对应分类中。';
+    }
+
+    if (!document.getElementById('admin-announcement-category')) {
+      const imageField = imageInput.closest('.field');
+      const categoryField = document.createElement('label');
+      categoryField.className = 'field';
+      categoryField.innerHTML = `
+        <span class="field-label">公告分类</span>
+        <select id="admin-announcement-category" class="field-input">
+          <option value="category1">Category 1</option>
+          <option value="category2">Category 2</option>
+          <option value="category3">Category 3</option>
+          <option value="category4">Category 4</option>
+        </select>
+      `;
+      imageField?.insertAdjacentElement('beforebegin', categoryField);
+    }
+
+    const recordLabel = document.querySelector('#announcement-record .announcement-record-label');
+    if (recordLabel) recordLabel.textContent = '公告列表：';
+
+    const button = document.getElementById('btn-save-announcement');
+    if (button && !announcementEditingId) button.textContent = '发布公告';
+
+    if (!document.getElementById('huiwen-announcement-cms-styles')) {
+      const style = document.createElement('style');
+      style.id = 'huiwen-announcement-cms-styles';
+      style.textContent = `
+        .announcement-cms-list{display:grid;gap:.75rem;margin-top:.65rem}
+        .announcement-cms-item{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:.85rem;align-items:center;padding:.8rem;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(0,0,0,.12)}
+        .announcement-cms-thumb{width:120px;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:#09090b}
+        .announcement-cms-thumb img{width:100%;height:100%;display:block;object-fit:cover}
+        .announcement-cms-meta{min-width:0}
+        .announcement-cms-category{display:inline-block;color:#e0b14e;font-size:.78rem;margin-bottom:.25rem}
+        .announcement-cms-text{color:#e8edf6;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .announcement-cms-date{color:var(--text-muted,#9aa3b5);font-size:.75rem;margin-top:.25rem}
+        .announcement-cms-actions{display:flex;gap:.45rem;flex-wrap:wrap;justify-content:flex-end}
+        .announcement-cms-actions button{border-radius:999px;padding:.45rem .75rem;border:1px solid rgba(224,177,78,.5);background:transparent;color:#e0b14e;cursor:pointer}
+        .announcement-cms-actions .announcement-delete-btn{color:#f1a5a5;border-color:rgba(241,165,165,.4)}
+        @media(max-width:700px){.announcement-cms-item{grid-template-columns:88px minmax(0,1fr)}.announcement-cms-thumb{width:88px}.announcement-cms-actions{grid-column:1/-1;justify-content:flex-start}}
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  async function refreshAnnouncementsFromSupabase() {
+    if (!supabaseClient) throw new Error('Supabase 未连接。');
+    const { data, error } = await supabaseClient.rpc('admin_get_announcements');
+    if (error) throw error;
+    adminCache.announcements = Array.isArray(data) ? data : [];
+    return adminCache.announcements;
+  }
+
+  async function uploadAnnouncementImage(dataUrl) {
+    if (!supabaseClient || !dataUrl) throw new Error('公告图片不可用。');
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    const type = blob.type || 'image/jpeg';
+    const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : type.includes('gif') ? 'gif' : 'jpg';
+    const path = `announcements/${Date.now()}-${Math.random().toString(36).slice(2,10)}.${ext}`;
+    const { error } = await supabaseClient.storage
+      .from(ANNOUNCEMENT_BUCKET)
+      .upload(path, blob, { contentType: type, upsert: false });
+    if (error) throw error;
+    const { data } = supabaseClient.storage.from(ANNOUNCEMENT_BUCKET).getPublicUrl(path);
+    const url = data?.publicUrl || '';
+    if (!url) throw new Error('无法生成公告图片地址。');
+    return { url, path };
+  }
+
+  async function removeAnnouncementStorageImage(path) {
+    if (!supabaseClient || !path) return;
+    const { error } = await supabaseClient.storage.from(ANNOUNCEMENT_BUCKET).remove([path]);
+    if (error) console.warn('Announcement image cleanup failed:', error);
+  }
+
+  function resetAnnouncementEditor() {
+    announcementPendingImage = null;
+    announcementEditingId = null;
+    announcementEditingImageUrl = '';
+    announcementEditingImagePath = null;
+
+    const input = document.getElementById('admin-announcement');
+    const category = document.getElementById('admin-announcement-category');
+    const preview = document.getElementById('admin-announcement-preview');
+    const imageInput = document.getElementById('admin-announcement-image');
+    const button = document.getElementById('btn-save-announcement');
+
+    if (input) input.value = '';
+    if (category) category.value = 'category1';
+    if (imageInput) imageInput.value = '';
+    if (preview) {
+      preview.innerHTML = '无图片';
+      preview.classList.remove('has-image');
+    }
+    if (button) button.textContent = '发布公告';
+  }
+
+  function renderAnnouncementRecord() {
+    const container = document.getElementById('announcement-record-content');
+    if (!container) return;
+    const list = adminCache.announcements || [];
+    if (!list.length) {
+      container.innerHTML = '<span class="announcement-record-empty">暂无公告</span>';
+      return;
+    }
+
+    container.innerHTML = `<div class="announcement-cms-list">${list.map((item) => {
+      const categoryNum = String(item.category || 'category1').replace('category','');
+      const date = item.created_at ? new Date(item.created_at).toLocaleString() : '';
+      return `
+        <div class="announcement-cms-item" data-announcement-id="${escapeAnnouncementHtml(item.id)}">
+          <div class="announcement-cms-thumb"><img src="${escapeAnnouncementHtml(item.image_url)}" alt="公告图片" /></div>
+          <div class="announcement-cms-meta">
+            <span class="announcement-cms-category">Category ${escapeAnnouncementHtml(categoryNum)}</span>
+            <div class="announcement-cms-text">${escapeAnnouncementHtml(item.content)}</div>
+            <div class="announcement-cms-date">${escapeAnnouncementHtml(date)}</div>
+          </div>
+          <div class="announcement-cms-actions">
+            <button type="button" class="announcement-edit-btn">编辑</button>
+            <button type="button" class="announcement-delete-btn">删除</button>
+          </div>
+        </div>
+      `;
+    }).join('')}</div>`;
   }
 
   function renderAnnouncementPanel() {
-    const input = document.getElementById('admin-announcement');
-    const preview = document.getElementById('admin-announcement-preview');
-    const imageInput = document.getElementById('admin-announcement-image');
-    if (!input) return;
-
-    const data = loadAnnouncement();
-    input.value = data.text;
-    announcementPendingImage = data.image;
-
-    if (preview) {
-      if (data.image) {
-        preview.innerHTML = `<img src="${data.image}" alt="预览" />`;
-        preview.classList.add('has-image');
-      } else {
-        preview.innerHTML = '无图片';
-        preview.classList.remove('has-image');
-      }
-    }
-    if (imageInput) imageInput.value = '';
+    ensureAnnouncementCmsShell();
+    resetAnnouncementEditor();
     renderAnnouncementRecord();
+  }
+
+  async function saveAnnouncementFromCms() {
+    ensureAnnouncementCmsShell();
+    if (!supabaseClient) throw new Error('Supabase 未连接。');
+
+    const text = String(document.getElementById('admin-announcement')?.value || '').trim();
+    const category = String(document.getElementById('admin-announcement-category')?.value || 'category1');
+    if (!text) throw new Error('请填写公告内容。');
+
+    let imageUrl = announcementEditingImageUrl;
+    let imagePath = announcementEditingImagePath;
+    let newlyUploadedPath = null;
+
+    if (announcementPendingImage) {
+      const uploaded = await uploadAnnouncementImage(announcementPendingImage);
+      imageUrl = uploaded.url;
+      imagePath = uploaded.path;
+      newlyUploadedPath = uploaded.path;
+    }
+
+    if (!imageUrl) throw new Error('请上传公告图片。');
+
+    const oldImagePath = announcementEditingImagePath;
+    const { error } = await supabaseClient.rpc('admin_save_announcement', {
+      p_id: announcementEditingId || null,
+      p_category: category,
+      p_content: text,
+      p_image_url: imageUrl,
+      p_image_path: imagePath || null,
+      p_published: true,
+    });
+
+    if (error) {
+      if (newlyUploadedPath) await removeAnnouncementStorageImage(newlyUploadedPath);
+      throw error;
+    }
+
+    if (newlyUploadedPath && oldImagePath && oldImagePath !== newlyUploadedPath) {
+      await removeAnnouncementStorageImage(oldImagePath);
+    }
+
+    const wasEditing = !!announcementEditingId;
+    await refreshAnnouncementsFromSupabase();
+    resetAnnouncementEditor();
+    renderAnnouncementRecord();
+    alert(wasEditing ? '公告修改成功！' : '公告发布成功！');
+  }
+
+  async function initializeAnnouncementsCms() {
+    ensureAnnouncementCmsShell();
+    await refreshAnnouncementsFromSupabase();
+
+    const migrated = localStorage.getItem(STORAGE_ANNOUNCEMENT_MIGRATED) === '1';
+    if (!migrated) {
+      const legacy = loadLegacyAnnouncement();
+      const alreadyExists = adminCache.announcements.some((item) =>
+        String(item.content || '').trim() === String(legacy.text || '').trim() && String(legacy.text || '').trim() !== ''
+      );
+
+      if (!alreadyExists && legacy.text && legacy.image) {
+        try {
+          let imageUrl = legacy.image;
+          let imagePath = null;
+          if (String(legacy.image).startsWith('data:image/')) {
+            const uploaded = await uploadAnnouncementImage(legacy.image);
+            imageUrl = uploaded.url;
+            imagePath = uploaded.path;
+          }
+          const { error } = await supabaseClient.rpc('admin_save_announcement', {
+            p_id: null,
+            p_category: 'category1',
+            p_content: legacy.text,
+            p_image_url: imageUrl,
+            p_image_path: imagePath,
+            p_published: true,
+          });
+          if (error) throw error;
+        } catch (error) {
+          console.warn('Legacy announcement migration skipped:', error);
+        }
+      }
+      localStorage.setItem(STORAGE_ANNOUNCEMENT_MIGRATED, '1');
+      await refreshAnnouncementsFromSupabase();
+    }
   }
 
   const adminAnnouncementImageInput = document.getElementById('admin-announcement-image');
@@ -851,48 +1039,98 @@ document.addEventListener('DOMContentLoaded', async () => {
       const file = e.target.files?.[0];
       if (!file || !file.type.startsWith('image/')) return;
       try {
-        const compressed = await compressImage(file, 600, 0.7);
+        const compressed = await compressImage(file, 1400, 0.82);
         announcementPendingImage = compressed;
         if (adminAnnouncementPreview) {
           adminAnnouncementPreview.innerHTML = '<img src="' + compressed + '" alt="预览" />';
           adminAnnouncementPreview.classList.add('has-image');
         }
-      } catch {
-        const reader = new FileReader();
-        reader.onload = () => {
-          announcementPendingImage = reader.result;
-          if (adminAnnouncementPreview) {
-            adminAnnouncementPreview.innerHTML = '<img src="' + reader.result + '" alt="预览" />';
-            adminAnnouncementPreview.classList.add('has-image');
-          }
-        };
-        reader.readAsDataURL(file);
+      } catch (error) {
+        console.error('Announcement image preparation error:', error);
+        alert('图片读取失败，请换一张图片后重试。');
       }
     });
   }
+
   if (adminAnnouncementPreview) {
     adminAnnouncementPreview.addEventListener('click', () => {
       announcementPendingImage = null;
-      adminAnnouncementPreview.innerHTML = '无图片';
-      adminAnnouncementPreview.classList.remove('has-image');
       if (adminAnnouncementImageInput) adminAnnouncementImageInput.value = '';
+      if (announcementEditingImageUrl) {
+        adminAnnouncementPreview.innerHTML = '<img src="' + escapeAnnouncementHtml(announcementEditingImageUrl) + '" alt="预览" />';
+        adminAnnouncementPreview.classList.add('has-image');
+      } else {
+        adminAnnouncementPreview.innerHTML = '无图片';
+        adminAnnouncementPreview.classList.remove('has-image');
+      }
     });
   }
 
   const btnClearAnnouncementImage = document.getElementById('btn-clear-announcement-image');
   if (btnClearAnnouncementImage) {
+    btnClearAnnouncementImage.textContent = '清除待上传图片';
     btnClearAnnouncementImage.addEventListener('click', () => {
-      const data = loadAnnouncement();
-      saveAnnouncement({ text: data.text, image: null });
       announcementPendingImage = null;
-      renderAnnouncementPanel();
+      if (adminAnnouncementImageInput) adminAnnouncementImageInput.value = '';
       if (adminAnnouncementPreview) {
-        adminAnnouncementPreview.innerHTML = '无图片';
-        adminAnnouncementPreview.classList.remove('has-image');
+        if (announcementEditingImageUrl) {
+          adminAnnouncementPreview.innerHTML = '<img src="' + escapeAnnouncementHtml(announcementEditingImageUrl) + '" alt="预览" />';
+          adminAnnouncementPreview.classList.add('has-image');
+        } else {
+          adminAnnouncementPreview.innerHTML = '无图片';
+          adminAnnouncementPreview.classList.remove('has-image');
+        }
       }
-      alert('已清除公告图片，文字已保留。');
     });
   }
+
+  const announcementRecordContent = document.getElementById('announcement-record-content');
+  if (announcementRecordContent) {
+    announcementRecordContent.addEventListener('click', async (event) => {
+      const itemEl = event.target.closest('[data-announcement-id]');
+      if (!itemEl) return;
+      const item = adminCache.announcements.find((row) => String(row.id) === String(itemEl.dataset.announcementId));
+      if (!item) return;
+
+      if (event.target.closest('.announcement-edit-btn')) {
+        announcementEditingId = item.id;
+        announcementEditingImageUrl = item.image_url || '';
+        announcementEditingImagePath = item.image_path || null;
+        announcementPendingImage = null;
+        const text = document.getElementById('admin-announcement');
+        const category = document.getElementById('admin-announcement-category');
+        const imageInput = document.getElementById('admin-announcement-image');
+        const button = document.getElementById('btn-save-announcement');
+        if (text) text.value = item.content || '';
+        if (category) category.value = item.category || 'category1';
+        if (imageInput) imageInput.value = '';
+        if (adminAnnouncementPreview) {
+          adminAnnouncementPreview.innerHTML = item.image_url
+            ? '<img src="' + escapeAnnouncementHtml(item.image_url) + '" alt="预览" />'
+            : '无图片';
+          adminAnnouncementPreview.classList.toggle('has-image', !!item.image_url);
+        }
+        if (button) button.textContent = '保存修改';
+        document.getElementById('panel-announcement')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      if (event.target.closest('.announcement-delete-btn')) {
+        if (!confirm('确定删除这条公告吗？前台将立即不再显示。')) return;
+        const { error } = await supabaseClient.rpc('admin_delete_announcement', { p_id: item.id });
+        if (error) {
+          alert(error.message || '删除失败。');
+          return;
+        }
+        if (item.image_path) await removeAnnouncementStorageImage(item.image_path);
+        await refreshAnnouncementsFromSupabase();
+        if (announcementEditingId === item.id) resetAnnouncementEditor();
+        renderAnnouncementRecord();
+        alert('公告已删除。');
+      }
+    });
+  }
+
   const btnClearProductImages = document.getElementById('btn-clear-product-images');
   if (btnClearProductImages) {
     btnClearProductImages.addEventListener('click', async () => {
@@ -914,24 +1152,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnClearProductImages.disabled = false;
       }
     });
-  }
-
-  function renderAnnouncementRecord() {
-    const container = document.getElementById('announcement-record-content');
-    if (!container) return;
-    const data = loadAnnouncement();
-    if (!data.text && !data.image) {
-      container.innerHTML = '<span class="announcement-record-empty">暂无公告</span>';
-      return;
-    }
-    let html = '';
-    if (data.image) {
-      html += `<img src="${data.image}" alt="公告图片" class="announcement-record-img" />`;
-    }
-    if (data.text) {
-      html += `<div class="announcement-record-text">${data.text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>`;
-    }
-    container.innerHTML = html || '<span class="announcement-record-empty">暂无公告</span>';
   }
 
   function renderVerificationConfigInputs() {
