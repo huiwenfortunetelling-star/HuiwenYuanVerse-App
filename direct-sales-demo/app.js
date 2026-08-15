@@ -29,7 +29,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const referralInput = document.getElementById('auth-referral');
   const loginBtn = document.getElementById('btn-login');
 
-  // Today's small UI additions are injected here so index.html can stay unchanged.
+  // Small UI additions are injected here so index.html can stay unchanged.
+  ensureHomeShell();
   ensureGenderField();
   ensureCartShell();
 
@@ -75,6 +76,150 @@ document.addEventListener('DOMContentLoaded', () => {
     { id: 'p3', name: '城市夜景 · 电子图片', price: 39, stock: 99, desc: '高对比夜色光影，适合作为电脑桌面或宣传素材。' },
   ];
 
+
+  let homeAnnouncementsCache = [];
+
+  function escapeHomeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function ensureHomeShell() {
+    const tabBar = document.querySelector('.tab-bar');
+    const productsTab = tabBar?.querySelector('[data-tab="products"]');
+    const productsPanel = document.getElementById('tab-products');
+    if (!tabBar || !productsTab || !productsPanel) return;
+
+    let homeTab = tabBar.querySelector('[data-tab="home"]');
+    if (!homeTab) {
+      homeTab = document.createElement('button');
+      homeTab.type = 'button';
+      homeTab.dataset.tab = 'home';
+      homeTab.className = 'tab tab--active';
+      homeTab.textContent = '首页';
+      productsTab.insertAdjacentElement('beforebegin', homeTab);
+    }
+
+    let homePanel = document.getElementById('tab-home');
+    if (!homePanel) {
+      homePanel = document.createElement('section');
+      homePanel.id = 'tab-home';
+      homePanel.className = 'tab-panel tab-panel--active';
+      homePanel.innerHTML = `
+        <div class="home-announcements-shell">
+          ${['category1','category2','category3','category4'].map((category, index) => `
+            <section class="home-announcement-section" data-category="${category}">
+              <div class="home-announcement-heading">
+                <h2>Category ${index + 1}</h2>
+                <div class="home-announcement-arrows" aria-label="Category ${index + 1} navigation">
+                  <button type="button" class="home-row-arrow" data-direction="left" aria-label="向左">‹</button>
+                  <button type="button" class="home-row-arrow" data-direction="right" aria-label="向右">›</button>
+                </div>
+              </div>
+              <div class="home-announcement-row" data-announcement-row="${category}">
+                <div class="home-announcement-empty">正在载入...</div>
+              </div>
+            </section>
+          `).join('')}
+        </div>
+      `;
+      productsPanel.insertAdjacentElement('beforebegin', homePanel);
+
+      homePanel.addEventListener('click', (event) => {
+        const arrow = event.target.closest('.home-row-arrow');
+        if (!arrow) return;
+        const section = arrow.closest('.home-announcement-section');
+        const row = section?.querySelector('.home-announcement-row');
+        if (!row) return;
+        const amount = Math.max(280, row.clientWidth * 0.8);
+        row.scrollBy({
+          left: arrow.dataset.direction === 'left' ? -amount : amount,
+          behavior: 'smooth',
+        });
+      });
+    }
+
+    productsTab.classList.remove('tab--active');
+    homeTab.classList.add('tab--active');
+    productsPanel.classList.remove('tab-panel--active');
+    homePanel.classList.add('tab-panel--active');
+
+    if (!document.getElementById('huiwen-home-announcement-styles')) {
+      const style = document.createElement('style');
+      style.id = 'huiwen-home-announcement-styles';
+      style.textContent = `
+        .home-announcements-shell{display:grid;gap:2rem;padding:.15rem 0 1.5rem}
+        .home-announcement-section{min-width:0}
+        .home-announcement-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:0 0 .8rem;padding-bottom:.65rem;border-bottom:1px solid rgba(224,177,78,.18)}
+        .home-announcement-heading h2{margin:0;color:#f0e6cf;font-size:1.18rem;letter-spacing:.01em}
+        .home-announcement-heading h2::before{content:'•';color:#e0b14e;margin-right:.55rem}
+        .home-announcement-arrows{display:flex;gap:.45rem}
+        .home-row-arrow{width:2.1rem;height:2.1rem;border-radius:999px;border:1px solid rgba(224,177,78,.45);background:rgba(224,177,78,.06);color:#e7bd62;font-size:1.35rem;line-height:1;cursor:pointer}
+        .home-row-arrow:hover{background:rgba(224,177,78,.14)}
+        .home-announcement-row{display:flex;gap:1rem;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;scrollbar-width:thin;scrollbar-color:rgba(224,177,78,.55) rgba(255,255,255,.04);padding:.1rem 0 .7rem}
+        .home-announcement-card{position:relative;flex:0 0 clamp(260px,42vw,430px);aspect-ratio:16/9;border-radius:22px;overflow:hidden;border:1px solid rgba(224,177,78,.22);background:#0a0a0d;scroll-snap-align:start;box-shadow:0 14px 35px rgba(0,0,0,.2);text-decoration:none}
+        .home-announcement-card img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .25s ease,filter .25s ease}
+        .home-announcement-card:hover img{transform:scale(1.025);filter:brightness(1.04)}
+        .home-announcement-card::after{content:'';position:absolute;inset:auto 0 0;height:22%;background:linear-gradient(transparent,rgba(0,0,0,.28));pointer-events:none}
+        .home-announcement-empty{min-height:150px;display:flex;align-items:center;color:var(--text-muted,#9aa3b5);font-size:.92rem}
+        @media (max-width:700px){
+          .home-announcements-shell{gap:1.55rem}
+          .home-announcement-card{flex-basis:82vw;border-radius:18px}
+          .home-announcement-arrows{display:none}
+          .home-announcement-heading h2{font-size:1.05rem}
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  function activateHomeTab() {
+    const homeTab = document.querySelector('.tab-bar [data-tab="home"]');
+    const homePanel = document.getElementById('tab-home');
+    if (!homeTab || !homePanel) return;
+
+    document.querySelectorAll('.tab-bar .tab').forEach((button) => {
+      button.classList.toggle('tab--active', button === homeTab);
+    });
+    document.querySelectorAll('.tab-panel').forEach((panel) => {
+      panel.classList.toggle('tab-panel--active', panel === homePanel);
+    });
+  }
+
+  function renderHomeAnnouncements() {
+    const categories = ['category1','category2','category3','category4'];
+    categories.forEach((category) => {
+      const row = document.querySelector(`[data-announcement-row="${category}"]`);
+      if (!row) return;
+      const items = homeAnnouncementsCache.filter((item) => item.category === category && item.image_url);
+      if (!items.length) {
+        row.innerHTML = '<div class="home-announcement-empty">暂无公告</div>';
+        return;
+      }
+      row.innerHTML = items.map((item) => `
+        <a class="home-announcement-card" href="/announcement.html?id=${encodeURIComponent(item.id)}" aria-label="查看公告">
+          <img src="${escapeHomeHtml(item.image_url)}" alt="公告图片" loading="lazy" />
+        </a>
+      `).join('');
+    });
+  }
+
+  async function syncHomeAnnouncements() {
+    if (!supabaseClient) {
+      homeAnnouncementsCache = [];
+      renderHomeAnnouncements();
+      return [];
+    }
+    const { data, error } = await supabaseClient.rpc('get_published_announcements');
+    if (error) throw error;
+    homeAnnouncementsCache = Array.isArray(data) ? data : [];
+    renderHomeAnnouncements();
+    return homeAnnouncementsCache;
+  }
 
   function ensureGenderField() {
     if (document.getElementById('purchase-buyer-gender')) return;
@@ -657,6 +802,12 @@ document.addEventListener('DOMContentLoaded', () => {
       logoutBtn.style.display = 'inline-flex';
     }
     updateHeaderCurrentUser(loadCurrentUser());
+    activateHomeTab();
+    syncHomeAnnouncements().catch((error) => {
+      console.error('Announcement homepage load error:', error);
+      homeAnnouncementsCache = [];
+      renderHomeAnnouncements();
+    });
   }
 
   function showAuthScreen() {
@@ -866,6 +1017,13 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.id === `tab-${target}`,
           );
         });
+
+        if (target === 'home') {
+          syncHomeAnnouncements().catch((error) => {
+            console.error('Announcement homepage refresh error:', error);
+            renderHomeAnnouncements();
+          });
+        }
 
         if (target === 'support' && typeof updateHumanConsultVisibility === 'function') {
           updateHumanConsultVisibility();
