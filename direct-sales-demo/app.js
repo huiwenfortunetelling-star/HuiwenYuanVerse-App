@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
       homePanel.className = 'tab-panel tab-panel--active';
       homePanel.innerHTML = `
         <div class="home-announcements-shell">
-          ${['category1','category2','category3','category4'].map((category, index) => `
+          ${['category1','category2'].map((category, index) => `
             <section class="home-announcement-section" data-category="${category}">
               <div class="home-announcement-heading">
                 <h2>Category ${index + 1}</h2>
@@ -160,15 +160,35 @@ document.addEventListener('DOMContentLoaded', () => {
         .home-announcement-arrows{display:flex;gap:.45rem}
         .home-row-arrow{width:2.1rem;height:2.1rem;border-radius:999px;border:1px solid rgba(224,177,78,.45);background:rgba(224,177,78,.06);color:#e7bd62;font-size:1.35rem;line-height:1;cursor:pointer}
         .home-row-arrow:hover{background:rgba(224,177,78,.14)}
-        .home-announcement-row{display:flex;gap:1rem;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;scrollbar-width:thin;scrollbar-color:rgba(224,177,78,.55) rgba(255,255,255,.04);padding:.1rem 0 .7rem}
-        .home-announcement-card{position:relative;flex:0 0 320px;aspect-ratio:16/9;border-radius:22px;overflow:hidden;border:1px solid rgba(224,177,78,.22);background:#0a0a0d;scroll-snap-align:start;box-shadow:0 14px 35px rgba(0,0,0,.2);text-decoration:none}
+        .home-announcement-row{display:flex;align-items:flex-start;gap:1rem;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;scrollbar-width:thin;scrollbar-color:rgba(224,177,78,.55) rgba(255,255,255,.04);padding:.1rem 0 .7rem}
+        .home-announcement-card{position:relative;border-radius:20px;overflow:hidden;border:1px solid rgba(224,177,78,.22);background:#0a0a0d;scroll-snap-align:start;box-shadow:0 14px 35px rgba(0,0,0,.2);text-decoration:none}
+        [data-announcement-row="category1"] .home-announcement-card{flex:0 0 320px;aspect-ratio:16/9}
+        [data-announcement-row="category2"] .home-announcement-card{flex:0 0 180px;aspect-ratio:9/16}
         .home-announcement-card img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .25s ease,filter .25s ease}
         .home-announcement-card:hover img{transform:scale(1.025);filter:brightness(1.04)}
         .home-announcement-card::after{content:'';position:absolute;inset:auto 0 0;height:22%;background:linear-gradient(transparent,rgba(0,0,0,.28));pointer-events:none}
-        .home-announcement-empty{min-height:150px;display:flex;align-items:center;color:var(--text-muted,#9aa3b5);font-size:.92rem}
+        .home-announcement-empty{min-height:120px;display:flex;align-items:center;color:var(--text-muted,#9aa3b5);font-size:.92rem}
+
+        /* Keep brand title and all front-end menu items on one line. */
+        .app-header{gap:clamp(6px,1.2vw,14px);padding:clamp(10px,2vw,14px) clamp(10px,2vw,18px)}
+        .app-header-left{min-width:0;flex:0 1 auto;gap:clamp(5px,1vw,10px)}
+        .logo-mark{width:clamp(24px,6vw,38px);height:clamp(24px,6vw,38px);flex:0 0 auto}
+        .header-text{min-width:0}
+        .app-title{font-size:clamp(.62rem,2vw,1rem)!important;letter-spacing:.02em!important;white-space:nowrap!important}
+        .app-subtitle{font-size:clamp(.50rem,1.45vw,.76rem)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .header-current-user{font-size:clamp(.46rem,1.25vw,.72rem)!important;padding:4px clamp(4px,1vw,10px)!important;max-width:46%;overflow:hidden;text-overflow:ellipsis}
+        .header-logout{font-size:clamp(.48rem,1.2vw,.72rem)!important;padding:4px clamp(4px,1vw,8px)!important;flex:0 0 auto}
+
+        .tab-bar{display:flex!important;grid-template-columns:none!important;flex-wrap:nowrap!important;gap:clamp(1px,.35vw,4px)!important;padding:3px!important;overflow:hidden}
+        .tab-bar .tab{flex:.8 1 0;min-width:0;white-space:nowrap!important;font-size:clamp(.42rem,1.6vw,.76rem)!important;padding:6px 1px!important;letter-spacing:-.03em}
+        .tab-bar .tab[data-tab="cart"]{flex:1 1 0}
+        .tab-bar .tab[data-tab="wallet"]{flex:1.55 1 0}
+        .tab-bar .tab[data-tab="support"]{flex:1.15 1 0}
+
         @media (max-width:700px){
           .home-announcements-shell{gap:1.55rem}
-          .home-announcement-card{flex-basis:82vw;border-radius:18px}
+          [data-announcement-row="category1"] .home-announcement-card{flex-basis:clamp(220px,68vw,300px);border-radius:16px}
+          [data-announcement-row="category2"] .home-announcement-card{flex-basis:clamp(130px,38vw,165px);border-radius:16px}
           .home-announcement-arrows{display:none}
           .home-announcement-heading h2{font-size:1.05rem}
         }
@@ -191,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderHomeAnnouncements() {
-    const categories = ['category1','category2','category3','category4'];
+    const categories = ['category1','category2'];
     categories.forEach((category) => {
       const row = document.querySelector(`[data-announcement-row="${category}"]`);
       if (!row) return;
@@ -200,8 +220,11 @@ document.addEventListener('DOMContentLoaded', () => {
         row.innerHTML = '<div class="home-announcement-empty">暂无公告</div>';
         return;
       }
+      const detailPage = category === 'category2'
+        ? '/announcement-9x16.html'
+        : '/announcement-16x9.html';
       row.innerHTML = items.map((item) => `
-        <a class="home-announcement-card" href="/announcement.html?id=${encodeURIComponent(item.id)}" aria-label="查看公告">
+        <a class="home-announcement-card" href="${detailPage}?id=${encodeURIComponent(item.id)}" aria-label="查看公告">
           <img src="${escapeHomeHtml(item.image_url)}" alt="公告图片" loading="lazy" />
         </a>
       `).join('');
