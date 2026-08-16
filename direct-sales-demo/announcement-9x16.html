@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>公告 · 9:16 · 慧文国际善缘界</title>
+  <style>
+    :root{color-scheme:dark}
+    *{box-sizing:border-box}
+    body{margin:0;background:#050609;color:#edf0f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+    .page{width:min(980px,calc(100% - 28px));margin:0 auto;padding:28px 0 64px}
+    .back{display:inline-flex;align-items:center;gap:.35rem;border:1px solid rgba(224,177,78,.45);border-radius:999px;padding:.58rem .9rem;color:#e8bf65;text-decoration:none;background:rgba(224,177,78,.04);margin-bottom:18px;cursor:pointer}
+    .card{display:grid;grid-template-columns:270px minmax(0,1fr);gap:0;align-items:stretch;overflow:hidden;border:1px solid rgba(224,177,78,.18);border-radius:22px;background:linear-gradient(145deg,#11131c,#08090e);box-shadow:0 22px 60px rgba(0,0,0,.28)}
+    .hero{width:270px;height:auto;aspect-ratio:9/16;display:block;object-fit:cover;background:#0a0b0f}
+    .body{padding:clamp(24px,4vw,44px);display:flex;flex-direction:column;justify-content:center;min-width:0}
+    .meta{color:#c7a75f;font-size:.85rem;margin-bottom:18px}
+    .text{font-size:clamp(1.02rem,2vw,1.12rem);line-height:1.9;color:#edf0f6;white-space:pre-wrap;overflow-wrap:anywhere}
+    .status{grid-column:1/-1;padding:40px 24px;color:#a9b1c0;text-align:center}
+    @media(max-width:760px){
+      .page{width:min(100% - 18px,980px);padding-top:16px}
+      .card{grid-template-columns:1fr;border-radius:16px}
+      .hero{width:min(72vw,270px);aspect-ratio:9/16;margin:18px auto 0;border-radius:14px}
+      .body{padding:22px}
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <button class="back" type="button" onclick="history.length > 1 ? history.back() : location.href='/'">← 返回</button>
+    <article id="announcement-card" class="card">
+      <div id="announcement-status" class="status">正在载入公告...</div>
+    </article>
+  </main>
+
+  <script src="/api/supabase/config"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    (async () => {
+      const card = document.getElementById('announcement-card');
+      const status = document.getElementById('announcement-status');
+      const params = new URLSearchParams(location.search);
+      const id = params.get('id');
+
+      if (!id) {
+        status.textContent = '未找到公告。';
+        return;
+      }
+
+      if (!window.supabase || !window.SUPABASE_URL || !window.SUPABASE_PUBLISHABLE_KEY) {
+        status.textContent = '公告服务暂时不可用。';
+        return;
+      }
+
+      const client = window.supabase.createClient(
+        window.SUPABASE_URL,
+        window.SUPABASE_PUBLISHABLE_KEY,
+      );
+
+      const { data, error } = await client.rpc('get_published_announcement', { p_id: id });
+      const item = Array.isArray(data) ? data[0] : data;
+
+      if (error || !item) {
+        console.error(error || 'Announcement not found');
+        status.textContent = '这条公告不存在或已下架。';
+        return;
+      }
+
+      const img = document.createElement('img');
+      img.className = 'hero';
+      img.src = item.image_url || '';
+      img.alt = '公告图片';
+
+      const body = document.createElement('div');
+      body.className = 'body';
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      const categoryNumber = String(item.category || 'category1').replace('category','');
+      const date = item.created_at ? new Date(item.created_at).toLocaleString() : '';
+      meta.textContent = `Category ${categoryNumber}${date ? ' · ' + date : ''}`;
+
+      const text = document.createElement('div');
+      text.className = 'text';
+      text.textContent = item.content || '';
+
+      body.appendChild(meta);
+      body.appendChild(text);
+      card.innerHTML = '';
+      card.appendChild(img);
+      card.appendChild(body);
+    })().catch((error) => {
+      console.error(error);
+      const status = document.getElementById('announcement-status');
+      if (status) status.textContent = '公告载入失败，请稍后重试。';
+    });
+  </script>
+</body>
+</html>
