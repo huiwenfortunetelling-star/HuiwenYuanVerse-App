@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>防伪验证中心 · 慧文国际善缘界</title>
+  <style>
+    :root{
+      color-scheme:dark;
+      --bg:#050609;
+      --panel:#0c0e15;
+      --panel2:#090a0f;
+      --gold:#e0b14e;
+      --text:#edf0f6;
+      --muted:#9da7b8;
+      --line:rgba(224,177,78,.22);
+    }
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;min-height:100%;
+      background:radial-gradient(circle at 50% 0%,#131622 0,#080910 38%,var(--bg) 72%);
+      color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif
+    }
+    body{min-height:100vh}
+    .page{width:min(1080px,calc(100% - 28px));margin:0 auto;padding:36px 0 70px}
+    .brand{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+    .brand-mark{
+      width:46px;height:46px;border-radius:50%;
+      background:linear-gradient(145deg,#f7d77f,#bb8122 58%,#704713);
+      box-shadow:0 4px 18px rgba(224,177,78,.2),inset 0 0 0 1px rgba(255,255,255,.2);
+      flex:none
+    }
+    .brand h1{font-size:1.22rem;margin:0;letter-spacing:.04em}
+    .brand p{font-size:.78rem;color:var(--muted);margin:4px 0 0}
+    .verify-card{
+      border:1px solid var(--line);border-radius:24px;overflow:hidden;
+      background:linear-gradient(145deg,var(--panel),var(--panel2));
+      box-shadow:0 24px 70px rgba(0,0,0,.32)
+    }
+    .verify-head{
+      display:flex;align-items:center;justify-content:space-between;gap:16px;
+      padding:22px 26px;border-bottom:1px solid rgba(224,177,78,.12)
+    }
+    .verify-title{margin:0;font-size:1.35rem}
+    .verified-badge{
+      display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+      padding:8px 13px;border:1px solid rgba(224,177,78,.5);border-radius:999px;
+      color:#f1cf7d;background:rgba(224,177,78,.08);font-size:.86rem
+    }
+    .verified-dot{
+      width:8px;height:8px;border-radius:50%;background:var(--gold);
+      box-shadow:0 0 10px rgba(224,177,78,.8)
+    }
+    .verify-body{
+      display:grid;grid-template-columns:minmax(280px,440px) minmax(0,1fr);
+      gap:34px;padding:32px
+    }
+    .talisman-wrap{
+      min-height:420px;display:flex;align-items:center;justify-content:center;
+      border:1px solid rgba(224,177,78,.14);border-radius:18px;overflow:hidden;
+      background:#050609
+    }
+    .talisman{
+      display:block;width:100%;height:auto;max-height:680px;object-fit:contain
+    }
+    .image-pending{
+      color:var(--muted);text-align:center;line-height:1.8;padding:40px 20px
+    }
+    .info{min-width:0}
+    .product{
+      font-size:1.15rem;font-weight:700;color:#f3d17e;margin:2px 0 22px;
+      overflow-wrap:anywhere
+    }
+    .info-grid{display:grid;gap:12px}
+    .info-row{
+      display:grid;grid-template-columns:116px minmax(0,1fr);gap:16px;
+      padding:15px 0;border-bottom:1px solid rgba(255,255,255,.07)
+    }
+    .info-label{color:var(--muted);font-size:.92rem}
+    .info-value{font-size:1rem;overflow-wrap:anywhere}
+    .notice{
+      margin-top:24px;padding:15px 17px;border-radius:14px;
+      border:1px solid rgba(224,177,78,.14);
+      background:rgba(224,177,78,.045);color:#c8cfda;
+      font-size:.86rem;line-height:1.7
+    }
+    .status{padding:70px 24px;text-align:center;color:var(--muted)}
+    .status strong{display:block;color:var(--text);font-size:1.15rem;margin-bottom:10px}
+    .footer{text-align:center;color:#697384;font-size:.75rem;margin-top:20px}
+    [hidden]{display:none!important}
+    @media(max-width:760px){
+      .page{width:min(100% - 18px,1080px);padding-top:18px}
+      .brand{margin:0 8px 18px}
+      .brand-mark{width:38px;height:38px}
+      .brand h1{font-size:1.02rem}
+      .verify-card{border-radius:18px}
+      .verify-head{padding:18px;align-items:flex-start}
+      .verify-title{font-size:1.15rem}
+      .verified-badge{font-size:.78rem;padding:7px 10px}
+      .verify-body{grid-template-columns:1fr;gap:22px;padding:18px}
+      .talisman-wrap{min-height:0}
+      .talisman{max-height:none}
+      .info-row{grid-template-columns:88px minmax(0,1fr);gap:12px}
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div>
+        <h1>慧文国际善缘界</h1>
+        <p>专属符 · 防伪验证中心</p>
+      </div>
+    </div>
+
+    <section id="loading" class="verify-card">
+      <div class="status">
+        <strong>正在验证</strong>
+        正在读取验证资料，请稍候…
+      </div>
+    </section>
+
+    <section id="error" class="verify-card" hidden>
+      <div class="status">
+        <strong id="error-title">无法验证</strong>
+        <span id="error-text">未找到对应的验证资料。</span>
+      </div>
+    </section>
+
+    <section id="record" class="verify-card" hidden>
+      <header class="verify-head">
+        <h2 class="verify-title">专属符验证资料</h2>
+        <div class="verified-badge"><span class="verified-dot"></span>验证有效</div>
+      </header>
+
+      <div class="verify-body">
+        <div class="talisman-wrap">
+          <img id="talisman-image" class="talisman" alt="客户专属符" hidden />
+          <div id="image-pending" class="image-pending" hidden>
+            专属符图片尚未上传。<br />
+            请稍后再次扫码查看。
+          </div>
+        </div>
+
+        <div class="info">
+          <div id="product-name" class="product"></div>
+
+          <div class="info-grid">
+            <div class="info-row">
+              <div class="info-label">姓名</div>
+              <div id="buyer-name" class="info-value">—</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">出生年月日</div>
+              <div id="buyer-dob" class="info-value">—</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">来自的国家</div>
+              <div id="buyer-country" class="info-value">—</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">性别</div>
+              <div id="buyer-gender" class="info-value">—</div>
+            </div>
+          </div>
+
+          <div class="notice">
+            此页面由慧文国际善缘界验证系统根据专属二维码读取。验证资料与对应订单绑定。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="footer">Huiwen International · Verification Center</div>
+  </main>
+
+  <script src="/api/supabase/config"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    (async function () {
+      const loading = document.getElementById('loading');
+      const errorBox = document.getElementById('error');
+      const recordBox = document.getElementById('record');
+      const errorTitle = document.getElementById('error-title');
+      const errorText = document.getElementById('error-text');
+
+      function showError(title, text) {
+        loading.hidden = true;
+        recordBox.hidden = true;
+        errorTitle.textContent = title;
+        errorText.textContent = text;
+        errorBox.hidden = false;
+      }
+
+      const token = new URLSearchParams(window.location.search).get('code')?.trim();
+      if (!token) {
+        showError('验证码缺失', '此链接没有包含有效的验证编号。');
+        return;
+      }
+
+      if (!window.supabase || !window.SUPABASE_URL || !window.SUPABASE_PUBLISHABLE_KEY) {
+        showError('验证服务暂不可用', '无法连接验证数据库，请稍后重试。');
+        return;
+      }
+
+      const client = window.supabase.createClient(
+        window.SUPABASE_URL,
+        window.SUPABASE_PUBLISHABLE_KEY,
+        { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+      );
+
+      try {
+        const { data, error } = await client.rpc('get_verification_record', {
+          p_token: token
+        });
+
+        if (error) throw error;
+
+        const item = Array.isArray(data) ? data[0] : data;
+        if (!item) {
+          showError('验证资料不存在', '未找到与此二维码对应的有效购买记录。');
+          return;
+        }
+
+        document.getElementById('product-name').textContent =
+          item.product_name || '慧文专属符';
+        document.getElementById('buyer-name').textContent =
+          item.buyer_name || '—';
+        document.getElementById('buyer-dob').textContent =
+          item.buyer_dob || '—';
+        document.getElementById('buyer-country').textContent =
+          item.buyer_country || '—';
+        document.getElementById('buyer-gender').textContent =
+          item.buyer_gender || '—';
+
+        const image = document.getElementById('talisman-image');
+        const pending = document.getElementById('image-pending');
+
+        if (item.talisman_image_url) {
+          image.src = item.talisman_image_url;
+          image.hidden = false;
+          pending.hidden = true;
+        } else {
+          image.hidden = true;
+          pending.hidden = false;
+        }
+
+        loading.hidden = true;
+        errorBox.hidden = true;
+        recordBox.hidden = false;
+      } catch (err) {
+        console.error('Verification error:', err);
+        showError('验证失败', '读取验证资料时发生错误，请稍后重试。');
+      }
+    })();
+  </script>
+</body>
+</html>
