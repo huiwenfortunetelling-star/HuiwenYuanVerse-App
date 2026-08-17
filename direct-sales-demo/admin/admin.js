@@ -141,6 +141,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       price: Number(o.price || 0),
       paymentStatus: o.payment_status || '',
       shipped: Boolean(o.shipped),
+      verificationToken: o.verification_token || '',
+      talismanImageUrl: o.talisman_image_url || '',
+      talismanImagePath: o.talisman_image_path || '',
+      talismanUploadedAt: o.talisman_uploaded_at || '',
       createdAt: o.created_at,
     }));
 
@@ -1152,24 +1156,92 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  function renderVerificationConfigInputs() {
-    const cfg = loadVerificationConfig();
-    const urlEl = document.getElementById('verification-url');
-    const paramEl = document.getElementById('verification-param');
-    const apiEl = document.getElementById('verification-api');
-    const apiKeyEl = document.getElementById('verification-apikey');
-    if (urlEl) urlEl.value = cfg.url || '';
-    if (paramEl) paramEl.value = cfg.param || 'code';
-    if (apiEl) apiEl.value = cfg.api || '';
-    if (apiKeyEl) apiKeyEl.value = cfg.apiKey || '';
+  // The old external anti-counterfeit service configuration is no longer needed.
+  // Huiwen now uses its own verification center at /verification.html.
+  const legacyVerificationConfig = document.querySelector('.verification-config');
+  if (legacyVerificationConfig) legacyVerificationConfig.remove();
+  const ordersPanelTip = document.querySelector('#panel-orders .panel-tip');
+  if (ordersPanelTip) {
+    ordersPanelTip.textContent = '每个订单都有专属验证二维码。先上传为客户制作的符图，确认全部处理完成后再手动点击「发货」。';
+  }
+
+  const TALISMAN_BUCKET = 'talisman-images';
+
+  function verificationUrlFor(order) {
+    const token = String(order?.verificationToken || '').trim();
+    if (!token) return '';
+    return `${window.location.origin}/verification.html?code=${encodeURIComponent(token)}`;
+  }
+
+  function safeFilePart(value) {
+    return String(value || 'order')
+      .trim()
+      .replace(/[^a-zA-Z0-9\u4e00-\u9fff_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'order';
+  }
+
+  async function downloadVerificationQr(order) {
+    const payload = verificationUrlFor(order);
+    if (!payload) {
+      alert('此订单缺少验证编号，请刷新后台后重试。');
+      return;
+    }
+    if (typeof QRCode === 'undefined') {
+      alert('二维码组件尚未加载，请刷新页面后重试。');
+      return;
+    }
+
+    const holder = document.createElement('div');
+    holder.style.position = 'fixed';
+    holder.style.left = '-10000px';
+    holder.style.top = '-10000px';
+    holder.style.width = '840px';
+    holder.style.height = '840px';
+    document.body.appendChild(holder);
+
+    try {
+      new QRCode(holder, {
+        text: payload,
+        width: 840,
+        height: 840,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel ? QRCode.CorrectLevel.H : undefined,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const source = holder.querySelector('canvas') || holder.querySelector('img');
+      if (!source) throw new Error('QR render failed');
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1000;
+      canvas.height = 1000;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 1000, 1000);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(source, 80, 80, 840, 840);
+
+      const a = document.createElement('a');
+      const shortToken = String(order.verificationToken || '').slice(0, 8);
+      a.download = `Huiwen-QR-${safeFilePart(order.productName)}-${shortToken}.png`;
+      a.href = canvas.toDataURL('image/png');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (error) {
+      console.error('QR download error:', error);
+      alert('二维码下载失败，请稍后重试。');
+    } finally {
+      holder.remove();
+    }
   }
 
   function renderOrdersPanel() {
     const container = document.getElementById('order-list-admin');
     const badgeEl = document.getElementById('orders-pending-badge');
     if (!container) return;
-
-    renderVerificationConfigInputs();
 
     const list = loadOrdersAdmin();
 
@@ -1195,35 +1267,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0') + ' ' + String(x.getHours()).padStart(2, '0') + ':' + String(x.getMinutes()).padStart(2, '0');
     };
 
-    const vCfg = loadVerificationConfig();
-    const qrPayloadFor = (o) => {
-      if (vCfg.url) {
-        const base = vCfg.url.replace(/\?.*$/, '');
-        const param = vCfg.param || 'code';
-        const sep = base.includes('?') ? '&' : '?';
-        return base + sep + param + '=' + encodeURIComponent(o.id);
-      }
-      const payload = {
-        h: 'HUIWEN',
-        o: o.id,
-        n: o.buyerName || '',
-        d: o.buyerDob || '',
-        c: o.buyerCountry || '',
-        g: o.buyerGender || '',
-        t: o.createdAt || '',
-      };
-      return JSON.stringify(payload);
-    };
-
     container.innerHTML = list.map((o) => {
-      const qrPayload = qrPayloadFor(o);
       const statusClass = o.shipped ? 'order-shipped' : 'order-pending';
-      const statusText = o.shipped ? '已发货' : '待制作';
+      const statusText = o.shipped ? '已发货' : '待发货';
       const buyerInfo = [o.buyerName, o.buyerDob, o.buyerCountry, o.buyerGender].filter(Boolean).join(' · ') || '—';
+      const imageStatus = o.talismanImageUrl ? '符图已上传' : '符图未上传';
+      const imageStatusStyle = o.talismanImageUrl ? 'color:#d8b45a' : 'color:var(--text-muted)';
       return `<div class="order-item-admin ${statusClass}" data-order-id="${(o.id || '').replace(/"/g, '&quot;')}">
         <div class="order-qr-wrap">
           <div class="order-qr-code" data-qr-payload></div>
-          <span class="order-qr-label">订单二维码</span>
+          <span class="order-qr-label">验证二维码</span>
+          <button type="button" class="btn btn-ghost btn-small btn-download-qr" data-order-id="${(o.id || '').replace(/"/g, '&quot;')}">下载QR</button>
         </div>
         <div class="order-details">
           <span class="order-product">${(o.productName || '商品').replace(/</g, '&lt;')}</span>
@@ -1231,9 +1285,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           <span class="order-price">￥${(o.price || 0).toFixed(2)}</span>
           <span class="order-buyer">${(o.buyerEmail || '').replace(/</g, '&lt;')}</span>
           <span class="order-date">${fmt(o.createdAt)}</span>
+          <span class="order-talisman-status" style="${imageStatusStyle}">${imageStatus}</span>
           <span class="order-status">${statusText}</span>
+          <button type="button" class="btn btn-ghost btn-small btn-upload-talisman" data-order-id="${(o.id || '').replace(/"/g, '&quot;')}">${o.talismanImageUrl ? '替换符图' : '上传'}</button>
           ${!o.shipped ? `<button type="button" class="btn btn-small btn-ship" data-order-id="${(o.id || '').replace(/"/g, '&quot;')}">发货</button>` : ''}
-          <a href="mailto:${(o.buyerEmail || '').replace(/"/g, '&quot;')}" class="btn btn-ghost btn-small" title="发邮件给客户">邮件</a>
         </div>
       </div>`;
     }).join('');
@@ -1241,41 +1296,87 @@ document.addEventListener('DOMContentLoaded', async () => {
     list.forEach((o) => {
       const item = container.querySelector(`[data-order-id="${o.id}"]`);
       const wrap = item?.querySelector('.order-qr-code[data-qr-payload]');
-      if (wrap && typeof QRCode !== 'undefined') {
+      const qrUrl = verificationUrlFor(o);
+      if (wrap && typeof QRCode !== 'undefined' && qrUrl) {
         wrap.innerHTML = '';
         wrap.removeAttribute('data-qr-payload');
-        new QRCode(wrap, { text: qrPayloadFor(o), width: 120, height: 120 });
+        new QRCode(wrap, {
+          text: qrUrl,
+          width: 120,
+          height: 120,
+          colorDark: '#000000',
+          colorLight: '#ffffff',
+        });
+      } else if (wrap && !qrUrl) {
+        wrap.textContent = '缺少验证码';
       }
     });
 
-    container.querySelectorAll('.btn-ship').forEach((btn) => {
+    container.querySelectorAll('.btn-download-qr').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const order = list.find((o) => o.id === btn.dataset.orderId);
+        if (!order) return;
+        btn.disabled = true;
+        try {
+          await downloadVerificationQr(order);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-upload-talisman').forEach((btn) => {
       btn.addEventListener('click', () => {
         const orderId = btn.dataset.orderId;
         if (!orderId) return;
-        openShipModal(orderId);
+        openTalismanUploadModal(orderId);
+      });
+    });
+
+    container.querySelectorAll('.btn-ship').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const orderId = btn.dataset.orderId;
+        const order = list.find((o) => o.id === orderId);
+        if (!order) return;
+        const warning = order.talismanImageUrl
+          ? '确认将此订单标记为「已发货」吗？'
+          : '此订单尚未上传专属符图。仍要将订单标记为「已发货」吗？';
+        if (!confirm(warning)) return;
+        btn.disabled = true;
+        try {
+          const { error } = await supabaseClient.rpc('admin_update_order_shipped', {
+            p_order_id: order.id,
+            p_shipped: true,
+          });
+          if (error) throw error;
+          await refreshAdminData();
+          renderOrdersPanel();
+          alert('订单已标记为已发货。');
+        } catch (error) {
+          console.error('Manual ship error:', error);
+          alert('更新发货状态失败，请稍后重试。');
+          btn.disabled = false;
+        }
       });
     });
   }
 
-  const btnSaveVerification = document.getElementById('btn-save-verification');
-  if (btnSaveVerification) {
-    btnSaveVerification.addEventListener('click', () => {
-      const url = (document.getElementById('verification-url')?.value || '').trim();
-      const param = (document.getElementById('verification-param')?.value || 'code').trim() || 'code';
-      const api = (document.getElementById('verification-api')?.value || '').trim();
-      const apiKey = (document.getElementById('verification-apikey')?.value || '').trim();
-      saveVerificationConfig({ url, param, api, apiKey });
-      alert('防伪配置已保存。');
-      renderOrdersPanel();
-    });
+  let talismanUploadOrderId = null;
+  let talismanUploadPendingFile = null;
+  let talismanPreviewObjectUrl = null;
+
+  function clearTalismanPreviewObjectUrl() {
+    if (talismanPreviewObjectUrl) {
+      URL.revokeObjectURL(talismanPreviewObjectUrl);
+      talismanPreviewObjectUrl = null;
+    }
   }
 
-  let shipModalOrderId = null;
-  let shipModalPendingImage = null;
+  function openTalismanUploadModal(orderId) {
+    talismanUploadOrderId = orderId;
+    talismanUploadPendingFile = null;
+    clearTalismanPreviewObjectUrl();
 
-  function openShipModal(orderId) {
-    shipModalOrderId = orderId;
-    shipModalPendingImage = null;
     const list = loadOrdersAdmin();
     const order = list.find((o) => o.id === orderId);
     const infoEl = document.getElementById('ship-modal-order-info');
@@ -1285,133 +1386,139 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modal = document.getElementById('ship-modal');
     if (!order || !infoEl || !previewEl || !inputEl || !confirmBtn || !modal) return;
 
+    const titleEl = modal.querySelector('.modal-title');
+    const labelEl = modal.querySelector('.field-label');
+    if (titleEl) titleEl.textContent = '上传专属符图片';
+    if (labelEl) labelEl.textContent = '选择制作好的符图片';
+    confirmBtn.textContent = '确认上传';
+
     infoEl.textContent = `订单：${order.productName || '商品'} · 客户：${order.buyerEmail || ''}`;
-    previewEl.innerHTML = '未选择';
-    previewEl.classList.remove('has-image');
+    previewEl.innerHTML = order.talismanImageUrl
+      ? `<img src="${String(order.talismanImageUrl).replace(/"/g, '&quot;')}" alt="当前符图" />`
+      : '未选择';
+    previewEl.classList.toggle('has-image', Boolean(order.talismanImageUrl));
+    previewEl.dataset.pending = '0';
     inputEl.value = '';
     confirmBtn.disabled = true;
     modal.hidden = false;
   }
 
-  function closeShipModal() {
+  function closeTalismanUploadModal() {
     const modal = document.getElementById('ship-modal');
     if (modal) modal.hidden = true;
-    shipModalOrderId = null;
-    shipModalPendingImage = null;
+    talismanUploadOrderId = null;
+    talismanUploadPendingFile = null;
+    clearTalismanPreviewObjectUrl();
   }
 
-  (function initShipModal() {
+  (function initTalismanUploadModal() {
     const inputEl = document.getElementById('ship-modal-image');
     const previewEl = document.getElementById('ship-modal-preview');
     const confirmBtn = document.getElementById('btn-ship-confirm');
     const cancelBtn = document.getElementById('btn-ship-cancel');
     const modal = document.getElementById('ship-modal');
-
     if (!inputEl || !previewEl || !confirmBtn || !modal) return;
 
     inputEl.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
+      talismanUploadPendingFile = null;
+      clearTalismanPreviewObjectUrl();
       if (!file || !file.type.startsWith('image/')) {
-        shipModalPendingImage = null;
-        previewEl.innerHTML = '未选择';
-        previewEl.classList.remove('has-image');
         confirmBtn.disabled = true;
         return;
       }
-      compressImage(file, 1200, 0.8).then((dataUrl) => {
-        shipModalPendingImage = dataUrl;
-        previewEl.innerHTML = `<img src="${dataUrl}" alt="预览" />`;
-        previewEl.classList.add('has-image');
-        confirmBtn.disabled = false;
-      });
+      talismanUploadPendingFile = file;
+      talismanPreviewObjectUrl = URL.createObjectURL(file);
+      previewEl.innerHTML = `<img src="${talismanPreviewObjectUrl}" alt="预览" />`;
+      previewEl.classList.add('has-image');
+      previewEl.dataset.pending = '1';
+      confirmBtn.disabled = false;
     });
 
     previewEl.addEventListener('click', () => {
-      if (previewEl.classList.contains('has-image')) {
-        shipModalPendingImage = null;
-        previewEl.innerHTML = '未选择';
-        previewEl.classList.remove('has-image');
-        confirmBtn.disabled = true;
-        if (inputEl) inputEl.value = '';
-      }
+      if (previewEl.dataset.pending !== '1') return;
+      talismanUploadPendingFile = null;
+      clearTalismanPreviewObjectUrl();
+      const order = loadOrdersAdmin().find((o) => o.id === talismanUploadOrderId);
+      previewEl.innerHTML = order?.talismanImageUrl
+        ? `<img src="${String(order.talismanImageUrl).replace(/"/g, '&quot;')}" alt="当前符图" />`
+        : '未选择';
+      previewEl.classList.toggle('has-image', Boolean(order?.talismanImageUrl));
+      previewEl.dataset.pending = '0';
+      confirmBtn.disabled = true;
+      inputEl.value = '';
     });
 
-    cancelBtn?.addEventListener('click', closeShipModal);
-    modal?.querySelector('.modal-backdrop')?.addEventListener('click', closeShipModal);
+    cancelBtn?.addEventListener('click', closeTalismanUploadModal);
+    modal.querySelector('.modal-backdrop')?.addEventListener('click', closeTalismanUploadModal);
 
     confirmBtn.addEventListener('click', async () => {
-      if (!shipModalOrderId || !shipModalPendingImage) return;
-      const list = loadOrdersAdmin();
-      const idx = list.findIndex((o) => o.id === shipModalOrderId);
-      if (idx < 0) {
-        alert('订单不存在');
-        return;
-      }
-      const order = list[idx];
-
-      const { error: shipError } = await supabaseClient.rpc('admin_update_order_shipped', {
-        p_order_id: order.id,
-        p_shipped: true,
-      });
-      if (shipError) {
-        alert('更新发货状态失败。');
+      if (!talismanUploadOrderId || !talismanUploadPendingFile) return;
+      const order = loadOrdersAdmin().find((o) => o.id === talismanUploadOrderId);
+      if (!order) {
+        alert('订单不存在。');
         return;
       }
 
-      order.deliveredImage = shipModalPendingImage;
-      order.shipped = true;
-      order.shippedAt = new Date().toISOString();
+      confirmBtn.disabled = true;
+      const originalText = confirmBtn.textContent;
+      confirmBtn.textContent = '上传中...';
+      let newPath = '';
+      try {
+        const file = talismanUploadPendingFile;
+        const nameParts = String(file.name || '').split('.');
+        let ext = nameParts.length > 1 ? nameParts.pop().toLowerCase() : '';
+        ext = ext.replace(/[^a-z0-9]/g, '').slice(0, 8);
+        if (!ext) {
+          const mime = String(file.type || '').toLowerCase();
+          ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
+        }
+        const unique = (window.crypto && typeof window.crypto.randomUUID === 'function')
+          ? window.crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        newPath = `orders/${order.id}/${unique}.${ext}`;
 
-      const vCfg = loadVerificationConfig();
-      if (vCfg.api) {
-        const headers = { 'Content-Type': 'application/json' };
-        if (vCfg.apiKey) headers['X-Api-Key'] = vCfg.apiKey;
-        fetch(vCfg.api, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            orderId: order.id,
-            productName: order.productName,
-            buyerName: order.buyerName,
-            buyerEmail: order.buyerEmail,
-            buyerDob: order.buyerDob,
-            buyerCountry: order.buyerCountry,
-            createdAt: order.createdAt,
-            shippedAt: order.shippedAt,
-          }),
-        }).catch(() => {});
-      }
-
-      const deliveryUrl = DELIVERY_API_URL || '';
-      if (deliveryUrl) {
-        fetch(deliveryUrl + '/api/deliver', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            buyerEmail: order.buyerEmail,
-            productName: order.productName,
-            productImage: order.deliveredImage,
-          }),
-        })
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.ok) {
-              alert('已发货！电子图片已发送至客户邮箱。');
-            } else {
-              alert('已标记为已发货。邮件发送失败：' + (data.error || '未知错误') + '，请手动发邮件给客户。');
-            }
-            closeShipModal();
-            renderOrdersPanel();
-          })
-          .catch(() => {
-            alert('已标记为已发货。发货服务未连接，请手动将图片发送至客户邮箱。');
-            closeShipModal();
-            renderOrdersPanel();
+        const { error: uploadError } = await supabaseClient.storage
+          .from(TALISMAN_BUCKET)
+          .upload(newPath, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type || undefined,
           });
-      } else {
-        alert('已发货！客户可在「订单」页下载电子图片。');
-        closeShipModal();
+        if (uploadError) throw uploadError;
+
+        const { data: publicData } = supabaseClient.storage
+          .from(TALISMAN_BUCKET)
+          .getPublicUrl(newPath);
+        const publicUrl = publicData?.publicUrl || '';
+        if (!publicUrl) throw new Error('Unable to create talisman public URL');
+
+        const { error: rpcError } = await supabaseClient.rpc('admin_set_talisman_image', {
+          p_order_id: order.id,
+          p_image_url: publicUrl,
+          p_image_path: newPath,
+        });
+        if (rpcError) throw rpcError;
+
+        if (order.talismanImagePath && order.talismanImagePath !== newPath) {
+          const { error: removeError } = await supabaseClient.storage
+            .from(TALISMAN_BUCKET)
+            .remove([order.talismanImagePath]);
+          if (removeError) console.warn('Old talisman image cleanup failed:', removeError);
+        }
+
+        await refreshAdminData();
+        closeTalismanUploadModal();
         renderOrdersPanel();
+        alert('符图上传成功。订单仍保持原来的发货状态。');
+      } catch (error) {
+        console.error('Talisman upload error:', error);
+        if (newPath) {
+          supabaseClient.storage.from(TALISMAN_BUCKET).remove([newPath]).catch(() => {});
+        }
+        alert('符图上传失败：' + (error?.message || '请稍后重试。'));
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
       }
     });
   })();
