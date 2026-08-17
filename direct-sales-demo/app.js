@@ -177,14 +177,15 @@ document.addEventListener('DOMContentLoaded', () => {
         .home-announcement-empty{min-height:120px;display:flex;align-items:center;color:var(--text-muted,#9aa3b5);font-size:.92rem}
 
         /* Keep brand title and all front-end menu items on one line. */
-        .app-header{gap:clamp(6px,1.2vw,14px);padding:clamp(10px,2vw,14px) clamp(10px,2vw,18px)}
-        .app-header-left{min-width:0;flex:0 1 38%;max-width:38%;gap:clamp(5px,1vw,10px)}
+        .app-header{justify-content:flex-start!important;gap:clamp(5px,1vw,11px);padding:clamp(10px,2vw,14px) clamp(10px,2vw,18px)}
+        .app-header-left{min-width:0;flex:0 1 36%;max-width:36%;gap:clamp(5px,1vw,10px)}
         .logo-mark{width:clamp(24px,6vw,38px);height:clamp(24px,6vw,38px);flex:0 0 auto}
         .header-text{min-width:0}
         .app-title{font-size:clamp(.62rem,2vw,1rem)!important;letter-spacing:.02em!important;white-space:nowrap!important}
         .app-subtitle{font-size:clamp(.50rem,1.45vw,.76rem)!important;white-space:normal!important;line-height:1.35;overflow:visible;text-overflow:clip}
-        .header-current-user{font-size:clamp(.46rem,1.25vw,.72rem)!important;padding:4px clamp(4px,1vw,10px)!important;max-width:none!important;overflow:visible!important;text-overflow:clip!important;white-space:nowrap!important;flex:1 1 auto;min-width:0}
-        .header-logout{font-size:clamp(.48rem,1.2vw,.72rem)!important;padding:5px clamp(5px,1vw,8px)!important;flex:0 0 auto;line-height:1.15!important;text-align:center;white-space:normal!important;min-width:32px}
+        .header-current-user{font-size:clamp(.46rem,1.25vw,.72rem)!important;padding:5px clamp(6px,1vw,10px)!important;max-width:none!important;overflow:visible!important;text-overflow:clip!important;white-space:normal!important;flex:1 1 auto;min-width:0;display:flex!important;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;line-height:1.3;margin-left:-2px}
+        .header-current-user .header-user-line{display:block;white-space:nowrap;max-width:100%}
+        .header-logout{font-size:clamp(.48rem,1.2vw,.72rem)!important;padding:5px clamp(5px,1vw,8px)!important;flex:0 0 auto;line-height:1.15!important;text-align:center;white-space:normal!important;min-width:32px;margin-left:auto}
 
         .tab-bar{display:flex!important;grid-template-columns:none!important;flex-wrap:nowrap!important;gap:clamp(1px,.35vw,4px)!important;padding:3px!important;overflow:hidden}
         .tab-bar .tab{flex:.8 1 0;min-width:0;white-space:nowrap!important;font-size:clamp(.42rem,1.6vw,.76rem)!important;padding:6px 1px!important;letter-spacing:-.03em}
@@ -193,10 +194,10 @@ document.addEventListener('DOMContentLoaded', () => {
         .tab-bar .tab[data-tab="support"]{flex:1.15 1 0}
 
         @media (max-width:700px){
-          .app-header-left{flex-basis:34%;max-width:34%}
+          .app-header-left{flex-basis:32%;max-width:32%}
           .app-title{font-size:clamp(.56rem,2.7vw,.78rem)!important}
           .app-subtitle{font-size:clamp(.44rem,2vw,.62rem)!important}
-          .header-current-user{font-size:clamp(.40rem,1.85vw,.58rem)!important;padding:3px 4px!important}
+          .header-current-user{font-size:clamp(.39rem,1.8vw,.56rem)!important;padding:4px 5px!important;gap:0;margin-left:-1px}
           .header-logout{font-size:clamp(.43rem,1.9vw,.58rem)!important;padding:4px 5px!important;min-width:28px}
           .home-announcements-shell{gap:1.55rem}
           [data-announcement-row="category1"] .home-announcement-card{flex-basis:clamp(220px,68vw,300px);border-radius:16px}
@@ -823,8 +824,13 @@ document.addEventListener('DOMContentLoaded', () => {
       el.textContent = '';
       return;
     }
-    el.style.display = 'inline-flex';
-    el.innerHTML = `当前：<strong>${(user.email || '—').replace(/</g, '&lt;')}</strong> · 邀请码 <strong>${(user.referralCode || '—').replace(/</g, '&lt;')}</strong>`;
+    el.style.display = 'flex';
+    const safeEmail = (user.email || '—').replace(/</g, '&lt;');
+    const safeCode = (user.referralCode || '—').replace(/</g, '&lt;');
+    el.innerHTML = `
+      <span class="header-user-line">当前：<strong>${safeEmail}</strong></span>
+      <span class="header-user-line">邀请码 <strong>${safeCode}</strong></span>
+    `;
   }
 
   function showMainScreen() {
