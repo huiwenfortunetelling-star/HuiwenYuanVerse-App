@@ -193,16 +193,6 @@
           <section id="tab-share" class="tab-panel">
             <div class="card">
               <h2 class="card-title">我的分享链接</h2>
-              <p class="card-tip">
-                将下面的链接发给好友，对方通过链接注册时，会自动带上你的邀请码（Demo 仅在本机浏览器中生效）。
-              </p>
-
-              <div class="field">
-                <span class="field-label">公告</span>
-                <div id="share-announcement" class="announcement-box">
-                  此处由管理员后台发布与修改，暂无公告时显示此提示。
-                </div>
-              </div>
 
               <div class="field">
                 <span class="field-label">专属分享链接</span>
@@ -336,17 +326,11 @@
             <button type="button" id="purchase-modal-cancel" class="btn btn-ghost">取消</button>
             <button type="button" id="purchase-modal-confirm" class="btn btn-primary">确认购买</button>
           </div>
-          <div id="paypal-payment-area" hidden>
-            <p id="paypal-payment-message" class="status-message"></p>
-            <div id="paypal-button-container"></div>
-          </div>
         </div>
       </div>
     </div>
-    <script src="/api/paypal/config"></script>
-<script src="/api/supabase/config"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./app.js" onerror="alert('脚本加载失败！请确保在 direct-sales-demo 文件夹内打开此页面，或使用 Live Server 从该目录启动。')"></script>
+
+    <script src="./app.js" onerror="alert('脚本加载失败！请确保在 direct-sales-demo 文件夹内打开此页面，或使用 Live Server 从该目录启动。')"></script>
   </body>
 </html>
 
