@@ -1278,6 +1278,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div class="order-qr-code" data-qr-payload></div>
           <span class="order-qr-label">验证二维码</span>
           <button type="button" class="btn btn-ghost btn-small btn-download-qr" data-order-id="${(o.id || '').replace(/"/g, '&quot;')}">下载QR</button>
+          <div class="verification-token-block" style="margin-top:8px;width:100%;max-width:170px;text-align:center">
+            <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:4px">验证编号</div>
+            <div class="verification-token-value" style="font-size:.68rem;line-height:1.35;word-break:break-all;color:#d8b45a">${String(o.verificationToken || '—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}</div>
+            <button type="button" class="btn btn-ghost btn-small btn-copy-verification-token" data-order-id="${(o.id || '').replace(/"/g, '&quot;')}" style="margin-top:6px">复制编号</button>
+          </div>
         </div>
         <div class="order-details">
           <span class="order-product">${(o.productName || '商品').replace(/</g, '&lt;')}</span>
@@ -1321,6 +1326,43 @@ document.addEventListener('DOMContentLoaded', async () => {
           await downloadVerificationQr(order);
         } finally {
           btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-copy-verification-token').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const order = list.find((o) => o.id === btn.dataset.orderId);
+        const token = String(order?.verificationToken || '').trim();
+        if (!token) {
+          alert('此订单缺少验证编号。');
+          return;
+        }
+
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(token);
+          } else {
+            const temp = document.createElement('textarea');
+            temp.value = token;
+            temp.setAttribute('readonly', '');
+            temp.style.position = 'fixed';
+            temp.style.left = '-10000px';
+            document.body.appendChild(temp);
+            temp.select();
+            const ok = document.execCommand('copy');
+            temp.remove();
+            if (!ok) throw new Error('copy command failed');
+          }
+
+          const oldText = btn.textContent;
+          btn.textContent = '已复制';
+          setTimeout(() => {
+            btn.textContent = oldText;
+          }, 1200);
+        } catch (error) {
+          console.error('Copy verification token error:', error);
+          window.prompt('请复制验证编号：', token);
         }
       });
     });
