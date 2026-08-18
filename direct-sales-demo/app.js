@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const CONSULT_FREE_MINUTES = 30; // 购买客户首半小时免费
   const POINTS_PER_REGISTRATION = 10; // 下线注册，上级得 10 善缘值（缘）
   const WITHDRAW_THRESHOLD = 100; // Demo：满 100 可提现
-  // 发货服务地址：配置后购买时自动发邮件到客户邮箱。留空则仅支持订单页下载。
+  // 发货服务地址：如配置可用于邮件服务；客户订单页不提供专属符下载。
   const DELIVERY_API_URL = '';
 
   const defaultProducts = [
@@ -1484,15 +1484,15 @@ document.addEventListener('DOMContentLoaded', () => {
           if (data.ok) {
             alert(`购买成功！《${product.name}》已发送到您的邮箱 ${current.email}，请查收。`);
           } else {
-            alert(`购买成功！邮件发送失败：${data.error || '未知错误'}。您可在「订单」页点击「下载」获取图片。`);
+            alert(`购买成功！订单已生成。管理员会在制作完成并确认后，通过邮件向您发送专属符。`);
           }
         })
         .catch(() => {
-          alert(`购买成功！发货服务未连接，您可在「订单」页点击「下载」获取电子图片。`);
+          alert(`购买成功！订单已生成。管理员会在制作完成并确认后，通过邮件向您发送专属符。`);
         });
     } else {
       const msg = product.image
-        ? `购买成功！《${product.name}》已生成订单，管理员将根据订单制作电子图片并发送至您的邮箱，请留意查收。您也可在「订单」页点击「下载」获取。`
+        ? `购买成功！《${product.name}》已生成订单。管理员制作完成并确认后，会通过邮件向您发送专属符，请留意查收。`
         : `购买成功！《${product.name}》已生成订单，管理员将根据订单制作电子图片并发送至您的邮箱。`;
       alert(msg);
     }
@@ -2131,44 +2131,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!container) return;
     const user = loadCurrentUser();
     const orders = loadOrders().filter((o) => o.buyerEmail === (user && user.email));
-    const products = loadProducts();
     if (!orders.length) {
       container.innerHTML = '<p class="orders-empty">暂无订单</p>';
       return;
     }
+
     container.innerHTML = orders.map((o) => {
-      const product = products.find((p) => p.id === o.productId);
-      const hasImage = (o.deliveredImage) || (product && product.image);
-      const downloadBtn = hasImage
-        ? `<button type="button" class="order-download-btn" data-order-id="${o.id}" data-product-id="${o.productId || ''}" data-has-delivered="${!!o.deliveredImage}" title="下载/查看电子图片">下载</button>`
-        : '';
       return `<div class="order-item">
         <span class="order-product">${(o.productName || '商品').replace(/</g, '&lt;')}</span>
         <span class="order-price">￥${(o.price || 0).toFixed(2)}</span>
         <span class="order-date">${formatDate(o.createdAt)}</span>
-        ${downloadBtn}
       </div>`;
     }).join('');
-
-    container.querySelectorAll('.order-download-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const orderId = btn.dataset.orderId;
-        const productId = btn.dataset.productId;
-        const hasDelivered = btn.dataset.hasDelivered === 'true';
-        const orders = loadOrders();
-        const order = orders.find((o) => o.id === orderId);
-        const product = loadProducts().find((p) => p.id === productId);
-        const image = order?.deliveredImage || (product && product.image);
-        if (!image) return;
-        const ext = (image || '').match(/data:image\/(\w+)/)?.[1] || 'png';
-        const name = (order?.productName || product?.name || '电子图片').replace(/[/\\?%*:|"<>]/g, '_');
-        const a = document.createElement('a');
-        a.href = image;
-        a.download = `${name}.${ext === 'jpeg' ? 'jpg' : ext}`;
-        a.target = '_blank';
-        a.click();
-      });
-    });
   }
 
   function initFromStorage() {
