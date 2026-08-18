@@ -241,14 +241,14 @@
 
           <!-- 3. 购买日期 -->
           <div class="row">
-            <div class="label">购买日期</div>
-            <div id="purchase-date" class="value">—</div>
+            <div class="label">购买时间</div>
+            <div id="purchase-time" class="value">—</div>
           </div>
 
           <!-- 4. 到期日期 -->
           <div class="row">
-            <div class="label">到期日期</div>
-            <div id="expiry-date" class="value">—</div>
+            <div class="label">到期时间</div>
+            <div id="expiry-time" class="value">—</div>
           </div>
 
           <!-- 5. 状态 -->
@@ -332,11 +332,11 @@
         document.getElementById('product-name').textContent =
           item.product_name || '—';
 
-        document.getElementById('purchase-date').textContent =
-          item.purchase_date || '—';
+        document.getElementById('purchase-time').textContent =
+          item.purchase_time || '—';
 
-        document.getElementById('expiry-date').textContent =
-          item.expiry_date || '—';
+        document.getElementById('expiry-time').textContent =
+          item.expiry_time || '—';
 
         const statusEl = document.getElementById('talisman-status');
         const expired = String(item.status || '').toLowerCase() === 'expired';
