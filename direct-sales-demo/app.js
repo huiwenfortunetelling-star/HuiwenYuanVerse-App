@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Small UI additions are injected here so index.html can stay unchanged.
   ensureHomeShell();
+  ensureBirthdayField();
   ensureGenderField();
   ensureCartShell();
 
@@ -255,6 +256,247 @@ document.addEventListener('DOMContentLoaded', () => {
     homeAnnouncementsCache = Array.isArray(data) ? data : [];
     renderHomeAnnouncements();
     return homeAnnouncementsCache;
+  }
+
+  function getBusinessTodayParts() {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Vancouver',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+
+      const map = {};
+      parts.forEach((part) => {
+        if (part.type !== 'literal') map[part.type] = part.value;
+      });
+
+      return {
+        year: Number(map.year),
+        month: Number(map.month),
+        day: Number(map.day),
+      };
+    } catch {
+      const now = new Date();
+      return {
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        day: now.getDate(),
+      };
+    }
+  }
+
+  function birthdayDaysInMonth(year, month) {
+    return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  }
+
+  function syncBirthdayValue() {
+    const hidden = document.getElementById('purchase-buyer-dob');
+    const yearInput = document.getElementById('purchase-buyer-year');
+    const monthSelect = document.getElementById('purchase-buyer-month');
+    const daySelect = document.getElementById('purchase-buyer-day');
+
+    if (!hidden || !yearInput || !monthSelect || !daySelect) return;
+
+    const yearText = yearInput.value.trim();
+    const year = Number(yearText);
+    const month = Number(monthSelect.value);
+    const day = Number(daySelect.value);
+    const today = getBusinessTodayParts();
+
+    hidden.value = '';
+
+    if (!/^\d{4}$/.test(yearText)) return;
+    if (year < 1000 || year > today.year) return;
+    if (!month || !day) return;
+
+    const maxDay = birthdayDaysInMonth(year, month);
+    if (day < 1 || day > maxDay) return;
+
+    if (
+      year === today.year &&
+      (month > today.month || (month === today.month && day > today.day))
+    ) {
+      return;
+    }
+
+    hidden.value =
+      String(year).padStart(4, '0') +
+      '-' +
+      String(month).padStart(2, '0') +
+      '-' +
+      String(day).padStart(2, '0');
+  }
+
+  function updateBirthdayChoices() {
+    const yearInput = document.getElementById('purchase-buyer-year');
+    const monthSelect = document.getElementById('purchase-buyer-month');
+    const daySelect = document.getElementById('purchase-buyer-day');
+
+    if (!yearInput || !monthSelect || !daySelect) return;
+
+    const today = getBusinessTodayParts();
+    const yearText = yearInput.value.trim();
+    const year = /^\d{4}$/.test(yearText) ? Number(yearText) : null;
+
+    Array.from(monthSelect.options).forEach((option) => {
+      if (!option.value) return;
+      const month = Number(option.value);
+      option.disabled =
+        year !== null &&
+        (year > today.year ||
+          (year === today.year && month > today.month));
+    });
+
+    if (
+      monthSelect.value &&
+      monthSelect.selectedOptions[0] &&
+      monthSelect.selectedOptions[0].disabled
+    ) {
+      monthSelect.value = '';
+    }
+
+    const previousDay = Number(daySelect.value);
+    daySelect.innerHTML = '<option value="">日</option>';
+
+    const month = Number(monthSelect.value);
+    if (year !== null && year >= 1000 && year <= today.year && month) {
+      let maxDay = birthdayDaysInMonth(year, month);
+
+      if (year === today.year && month === today.month) {
+        maxDay = Math.min(maxDay, today.day);
+      }
+
+      for (let day = 1; day <= maxDay; day += 1) {
+        const option = document.createElement('option');
+        option.value = String(day).padStart(2, '0');
+        option.textContent = String(day).padStart(2, '0') + ' 日';
+        daySelect.appendChild(option);
+      }
+
+      if (previousDay >= 1 && previousDay <= maxDay) {
+        daySelect.value = String(previousDay).padStart(2, '0');
+      }
+    }
+
+    syncBirthdayValue();
+  }
+
+  function resetBirthdayFields() {
+    const hidden = document.getElementById('purchase-buyer-dob');
+    const yearInput = document.getElementById('purchase-buyer-year');
+    const monthSelect = document.getElementById('purchase-buyer-month');
+    const daySelect = document.getElementById('purchase-buyer-day');
+
+    if (hidden) hidden.value = '';
+    if (yearInput) yearInput.value = '';
+    if (monthSelect) monthSelect.value = '';
+    if (daySelect) {
+      daySelect.innerHTML = '<option value="">日</option>';
+      daySelect.value = '';
+    }
+
+    updateBirthdayChoices();
+  }
+
+  function ensureBirthdayField() {
+    const original = document.getElementById('purchase-buyer-dob');
+    if (!original || document.getElementById('purchase-buyer-year')) return;
+
+    const field = original.closest('.field');
+    if (!field) return;
+
+    original.type = 'hidden';
+    original.removeAttribute('placeholder');
+    original.removeAttribute('min');
+    original.removeAttribute('max');
+
+    const controls = document.createElement('div');
+    controls.className = 'birthday-select-row';
+    controls.innerHTML = `
+      <input
+        id="purchase-buyer-year"
+        class="field-input birthday-year-input"
+        type="text"
+        inputmode="numeric"
+        autocomplete="bday-year"
+        maxlength="4"
+        placeholder="YYYY"
+        aria-label="出生年份"
+      />
+      <select
+        id="purchase-buyer-month"
+        class="field-input"
+        autocomplete="bday-month"
+        aria-label="出生月份"
+      >
+        <option value="">月</option>
+        ${Array.from({ length: 12 }, (_, index) => {
+          const month = String(index + 1).padStart(2, '0');
+          return `<option value="${month}">${month} 月</option>`;
+        }).join('')}
+      </select>
+      <select
+        id="purchase-buyer-day"
+        class="field-input"
+        autocomplete="bday-day"
+        aria-label="出生日期"
+      >
+        <option value="">日</option>
+      </select>
+    `;
+
+    original.insertAdjacentElement('afterend', controls);
+
+    if (!document.getElementById('huiwen-birthday-styles')) {
+      const style = document.createElement('style');
+      style.id = 'huiwen-birthday-styles';
+      style.textContent = `
+        .birthday-select-row{
+          display:grid;
+          grid-template-columns:1.15fr 1fr 1fr;
+          gap:8px;
+          width:100%;
+        }
+        .birthday-select-row .field-input{
+          min-width:0;
+          width:100%;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const yearInput = document.getElementById('purchase-buyer-year');
+    const monthSelect = document.getElementById('purchase-buyer-month');
+    const daySelect = document.getElementById('purchase-buyer-day');
+
+    yearInput.addEventListener('input', () => {
+      yearInput.value = yearInput.value.replace(/\D/g, '').slice(0, 4);
+      updateBirthdayChoices();
+    });
+
+    yearInput.addEventListener('blur', () => {
+      const today = getBusinessTodayParts();
+      const value = yearInput.value.trim();
+
+      if (value && !/^\d{4}$/.test(value)) {
+        alert('出生年份必须是 4 位数字。');
+        yearInput.focus();
+        return;
+      }
+
+      if (/^\d{4}$/.test(value) && Number(value) > today.year) {
+        alert('出生年份不能晚于当前年份。');
+        yearInput.value = '';
+        updateBirthdayChoices();
+      }
+    });
+
+    monthSelect.addEventListener('change', updateBirthdayChoices);
+    daySelect.addEventListener('change', syncBirthdayValue);
+
+    updateBirthdayChoices();
   }
 
   function ensureGenderField() {
@@ -1168,7 +1410,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!modal || !nameInput || !dobInput || !countryInput || !genderInput) return;
 
     nameInput.value = '';
-    dobInput.value = '';
+    resetBirthdayFields();
     countryInput.value = '';
     genderInput.value = '';
     modal.hidden = false;
@@ -1345,7 +1587,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
   
           if (!dob) {
-            alert('请选择出生年月日。');
+            alert('请选择有效的出生年月日。年份必须为 4 位数字，且日期不能晚于今天。');
             return;
           }
   
