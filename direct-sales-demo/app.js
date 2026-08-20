@@ -31,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Small UI additions are injected here so index.html can stay unchanged.
   ensureHomeShell();
-  ensureRegistrationPhoneField();
   ensureBirthdayField();
   ensureGenderField();
   ensureCartShell();
@@ -498,44 +497,6 @@ document.addEventListener('DOMContentLoaded', () => {
     daySelect.addEventListener('change', syncBirthdayValue);
 
     updateBirthdayChoices();
-  }
-
-  function ensureRegistrationPhoneField() {
-    if (document.getElementById('auth-phone')) return;
-
-    const referral = document.getElementById('auth-referral');
-    const referralField = referral && referral.closest('.field');
-    if (!referralField) return;
-
-    const field = document.createElement('label');
-    field.className = 'field';
-    field.id = 'auth-phone-field';
-    field.innerHTML = `
-      <span class="field-label">手机号（注册时必填，含国家/地区代码）</span>
-      <input
-        id="auth-phone"
-        type="tel"
-        class="field-input"
-        autocomplete="tel"
-        inputmode="tel"
-        placeholder="例如：+1 604 555 1234"
-      />
-      <span class="wallet-subtext" style="margin-top:6px;display:block">
-        已注册用户登录时可留空。新用户请以 + 开头填写国际号码。
-      </span>
-    `;
-
-    referralField.insertAdjacentElement('afterend', field);
-  }
-
-  function normalizeInternationalPhone(value) {
-    const raw = String(value || '').trim();
-    if (!raw || raw[0] !== '+') return '';
-
-    const digits = raw.slice(1).replace(/\D/g, '');
-    if (!/^[1-9]\d{6,14}$/.test(digits)) return '';
-
-    return '+' + digits;
   }
 
   function ensureGenderField() {
@@ -1142,8 +1103,6 @@ document.addEventListener('DOMContentLoaded', () => {
     emailInput.value = '';
     passwordInput.value = '';
     referralInput.value = '';
-    const phoneInput = document.getElementById('auth-phone');
-    if (phoneInput) phoneInput.value = '';
 
     if (logoutBtn) {
       logoutBtn.style.display = 'none';
@@ -1155,7 +1114,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const email = emailInput.value.trim().toLowerCase();
     const password = passwordInput.value.trim();
     const referral = referralInput.value.trim().toUpperCase();
-    const phoneRaw = (document.getElementById('auth-phone')?.value || '').trim();
 
     if (!email || !password) {
       alert('请输入邮箱和密码。');
@@ -1223,24 +1181,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (!profile) {
-        const phone = normalizeInternationalPhone(phoneRaw);
-
-        if (!phone) {
-          alert('新用户注册必须填写有效手机号，并包含国家/地区代码。例如：+1 604 555 1234。');
-          return;
-        }
-
-        const { error: phoneError } = await supabaseClient.rpc(
-          'set_my_registration_phone',
-          { p_phone: phone },
-        );
-
-        if (phoneError) {
-          console.error('Registration phone save error:', phoneError);
-          alert('手机号保存失败，请确认号码格式后重试。');
-          return;
-        }
-
         const {
           data: createdProfile,
           error: createProfileError,
@@ -1835,6 +1775,7 @@ document.addEventListener('DOMContentLoaded', () => {
       slot: item.booking_slot,
       duration: Number(item.duration_minutes || 120),
       status: item.status || 'pending',
+      phoneNumber: item.phone_number || '',
       notes: item.notes || '',
       createdAt: item.created_at,
     }));
@@ -1843,7 +1784,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return bookings;
   }
 
-  async function createBookingInSupabase(date, slot, duration) {
+  async function createBookingInSupabase(date, slot, duration, phoneNumber) {
     if (!supabaseClient) {
       throw new Error('Supabase is unavailable.');
     }
@@ -1851,6 +1792,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const { error } = await supabaseClient.rpc('create_booking', {
       p_booking_date: date,
       p_booking_slot: slot,
+      p_phone_number: phoneNumber,
       p_duration_minutes: duration,
     });
 
@@ -1862,7 +1804,45 @@ document.addEventListener('DOMContentLoaded', () => {
     await syncBookingsFromSupabase();
   }
 
+  function normalizeBookingPhone(value) {
+    const raw = String(value || '').trim();
+    if (!raw.startsWith('+')) return '';
+
+    const digits = raw.slice(1).replace(/\D/g, '');
+    if (!/^[1-9]\d{6,14}$/.test(digits)) return '';
+
+    return '+' + digits;
+  }
+
+  function ensureBookingPhoneField() {
+    if (document.getElementById('booking-phone')) return;
+
+    const dateInput = document.getElementById('booking-date');
+    const dateField = dateInput && dateInput.closest('.field');
+    if (!dateField) return;
+
+    const phoneField = document.createElement('label');
+    phoneField.className = 'field';
+    phoneField.innerHTML = `
+      <span class="field-label">联系电话（含国家 / 地区代码）</span>
+      <input
+        id="booking-phone"
+        type="tel"
+        class="field-input"
+        inputmode="tel"
+        autocomplete="tel"
+        placeholder="例如：+1 604 555 1234"
+      />
+      <span class="wallet-subtext" style="display:block;margin-top:6px">
+        仅用于本次预约联系与提醒。
+      </span>
+    `;
+
+    dateField.insertAdjacentElement('beforebegin', phoneField);
+  }
+
   function initBooking() {
+    ensureBookingPhoneField();
     const bookingDuration = document.getElementById('booking-duration');
 
     if (bookingDateInput) {
@@ -1884,10 +1864,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const date = bookingDateInput.value;
         const slot = bookingSlotSelect.value;
+        const phoneRaw = (document.getElementById('booking-phone')?.value || '').trim();
+        const phoneNumber = normalizeBookingPhone(phoneRaw);
         const duration = parseInt(
           (bookingDuration && bookingDuration.value) || '120',
           10,
         );
+
+        if (!phoneNumber) {
+          if (bookingMessage) {
+            bookingMessage.textContent =
+              '请填写有效联系电话，并包含国家 / 地区代码，例如 +1 604 555 1234。';
+          }
+          return;
+        }
 
         if (!date || !slot) {
           if (bookingMessage) {
@@ -1899,7 +1889,7 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingBtn.disabled = true;
 
         try {
-          await createBookingInSupabase(date, slot, duration);
+          await createBookingInSupabase(date, slot, duration, phoneNumber);
           if (bookingMessage) {
             bookingMessage.textContent = '预约已提交，当前状态为待确认。';
           }
