@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     users: [],
     orders: [],
     bookings: [],
+    bookingContacts: [],
     withdrawals: [],
     commissions: [],
     products: [],
@@ -117,6 +118,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const payload = data || {};
 
+    const {
+      data: bookingContactRows,
+      error: bookingContactError,
+    } = await supabaseClient.rpc('admin_get_booking_contacts');
+
+    if (bookingContactError) {
+      console.error('Booking contacts load error:', bookingContactError);
+      adminCache.bookingContacts = [];
+    } else {
+      adminCache.bookingContacts = Array.isArray(bookingContactRows)
+        ? bookingContactRows
+        : [];
+    }
+
     adminCache.users = (payload.users || []).map((u) => ({
       id: u.id,
       email: u.email,
@@ -148,9 +163,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       createdAt: o.created_at,
     }));
 
+    const bookingContactMap = new Map(
+      adminCache.bookingContacts.map((item) => [
+        String(item.booking_id || ''),
+        item.phone_number || '',
+      ]),
+    );
+
     adminCache.bookings = (payload.bookings || []).map((b) => ({
       id: b.id,
       userEmail: b.user_email,
+      phoneNumber: bookingContactMap.get(String(b.id || '')) || '',
       date: b.booking_date,
       slot: b.booking_slot,
       duration: Number(b.duration_minutes || 120),
@@ -1717,6 +1740,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  function escapeBookingText(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   function renderBookingsPanel() {
     const container = document.getElementById('booking-list-admin');
     if (!container) return;
@@ -1738,7 +1769,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     container.innerHTML = list
       .map(
         (b) => `<div class="booking-item" data-booking-id="${b.id}">
-          <div>${b.date || ''} ${b.slot || ''} · ${b.duration || 120}分钟${b.userEmail ? ' · ' + b.userEmail : ''}</div>
+          <div>
+            ${escapeBookingText(b.date || '')} ${escapeBookingText(b.slot || '')}
+            · ${Number(b.duration || 120)}分钟
+            ${b.userEmail ? ' · ' + escapeBookingText(b.userEmail) : ''}
+            · 电话：${b.phoneNumber ? escapeBookingText(b.phoneNumber) : '未填写'}
+          </div>
           <div style="margin-top:8px">
             <select class="field-input booking-status-select" data-booking-id="${b.id}">
               ${['pending', 'confirmed', 'completed', 'cancelled']
