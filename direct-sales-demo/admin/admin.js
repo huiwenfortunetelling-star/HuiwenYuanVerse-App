@@ -20,7 +20,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     users: [],
     orders: [],
     bookings: [],
-    bookingContacts: [],
     withdrawals: [],
     commissions: [],
     products: [],
@@ -118,20 +117,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const payload = data || {};
 
-    const {
-      data: bookingContactRows,
-      error: bookingContactError,
-    } = await supabaseClient.rpc('admin_get_booking_contacts');
-
-    if (bookingContactError) {
-      console.error('Booking contacts load error:', bookingContactError);
-      adminCache.bookingContacts = [];
-    } else {
-      adminCache.bookingContacts = Array.isArray(bookingContactRows)
-        ? bookingContactRows
-        : [];
-    }
-
     adminCache.users = (payload.users || []).map((u) => ({
       id: u.id,
       email: u.email,
@@ -163,21 +148,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       createdAt: o.created_at,
     }));
 
-    const bookingContactMap = new Map(
-      adminCache.bookingContacts.map((item) => [
-        String(item.booking_id || ''),
-        item.phone_number || '',
-      ]),
-    );
-
     adminCache.bookings = (payload.bookings || []).map((b) => ({
       id: b.id,
       userEmail: b.user_email,
-      phoneNumber: bookingContactMap.get(String(b.id || '')) || '',
       date: b.booking_date,
       slot: b.booking_slot,
       duration: Number(b.duration_minutes || 120),
       status: b.status || 'pending',
+      phoneNumber: b.phone_number || '',
       notes: b.notes || '',
       createdAt: b.created_at,
     }));
@@ -1773,7 +1751,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             ${escapeBookingText(b.date || '')} ${escapeBookingText(b.slot || '')}
             · ${Number(b.duration || 120)}分钟
             ${b.userEmail ? ' · ' + escapeBookingText(b.userEmail) : ''}
-            · 电话：${b.phoneNumber ? escapeBookingText(b.phoneNumber) : '未填写'}
+          </div>
+          <div style="margin-top:5px;color:var(--text-muted);font-size:.82rem">
+            联系电话：${b.phoneNumber ? escapeBookingText(b.phoneNumber) : '未填写'}
           </div>
           <div style="margin-top:8px">
             <select class="field-input booking-status-select" data-booking-id="${b.id}">
