@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Small UI additions are injected here so index.html can stay unchanged.
   ensureHomeShell();
+  ensureRegistrationPhoneField();
   ensureBirthdayField();
   ensureGenderField();
   ensureCartShell();
@@ -497,6 +498,44 @@ document.addEventListener('DOMContentLoaded', () => {
     daySelect.addEventListener('change', syncBirthdayValue);
 
     updateBirthdayChoices();
+  }
+
+  function ensureRegistrationPhoneField() {
+    if (document.getElementById('auth-phone')) return;
+
+    const referral = document.getElementById('auth-referral');
+    const referralField = referral && referral.closest('.field');
+    if (!referralField) return;
+
+    const field = document.createElement('label');
+    field.className = 'field';
+    field.id = 'auth-phone-field';
+    field.innerHTML = `
+      <span class="field-label">手机号（注册时必填，含国家/地区代码）</span>
+      <input
+        id="auth-phone"
+        type="tel"
+        class="field-input"
+        autocomplete="tel"
+        inputmode="tel"
+        placeholder="例如：+1 604 555 1234"
+      />
+      <span class="wallet-subtext" style="margin-top:6px;display:block">
+        已注册用户登录时可留空。新用户请以 + 开头填写国际号码。
+      </span>
+    `;
+
+    referralField.insertAdjacentElement('afterend', field);
+  }
+
+  function normalizeInternationalPhone(value) {
+    const raw = String(value || '').trim();
+    if (!raw || raw[0] !== '+') return '';
+
+    const digits = raw.slice(1).replace(/\D/g, '');
+    if (!/^[1-9]\d{6,14}$/.test(digits)) return '';
+
+    return '+' + digits;
   }
 
   function ensureGenderField() {
@@ -1103,6 +1142,8 @@ document.addEventListener('DOMContentLoaded', () => {
     emailInput.value = '';
     passwordInput.value = '';
     referralInput.value = '';
+    const phoneInput = document.getElementById('auth-phone');
+    if (phoneInput) phoneInput.value = '';
 
     if (logoutBtn) {
       logoutBtn.style.display = 'none';
@@ -1114,6 +1155,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const email = emailInput.value.trim().toLowerCase();
     const password = passwordInput.value.trim();
     const referral = referralInput.value.trim().toUpperCase();
+    const phoneRaw = (document.getElementById('auth-phone')?.value || '').trim();
 
     if (!email || !password) {
       alert('请输入邮箱和密码。');
@@ -1181,6 +1223,24 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (!profile) {
+        const phone = normalizeInternationalPhone(phoneRaw);
+
+        if (!phone) {
+          alert('新用户注册必须填写有效手机号，并包含国家/地区代码。例如：+1 604 555 1234。');
+          return;
+        }
+
+        const { error: phoneError } = await supabaseClient.rpc(
+          'set_my_registration_phone',
+          { p_phone: phone },
+        );
+
+        if (phoneError) {
+          console.error('Registration phone save error:', phoneError);
+          alert('手机号保存失败，请确认号码格式后重试。');
+          return;
+        }
+
         const {
           data: createdProfile,
           error: createProfileError,
@@ -1927,15 +1987,11 @@ document.addEventListener('DOMContentLoaded', () => {
         <span>${b.duration || 120} 分钟</span>
         <span>${statusLabels[b.status] || b.status || '待确认'}</span>
         ${canStart ? `<button type="button" class="btn btn-ghost btn-small btn-start-consult" data-id="${b.id}">开始咨询</button>` : ''}
-        <button type="button" class="btn btn-ghost btn-small btn-demo-consult" data-id="${b.id}" title="Demo 测试用，跳过时间检查">Demo 测试</button>
       </div>`;
     }).join('');
 
     container.querySelectorAll('.btn-start-consult').forEach((btn) => {
       btn.addEventListener('click', () => startConsult(btn.dataset.id, false));
-    });
-    container.querySelectorAll('.btn-demo-consult').forEach((btn) => {
-      btn.addEventListener('click', () => startConsult(btn.dataset.id, true));
     });
   }
 
@@ -2004,7 +2060,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     if (!isDemo && !canStartConsult(booking)) {
-      alert('该预约已过期或未到开始时间。可点击「Demo 测试」跳过时间检查。');
+      alert('该预约已过期或未到开始时间。');
       return;
     }
 
