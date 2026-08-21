@@ -1730,7 +1730,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const container = document.getElementById('booking-list-admin');
     if (!container) return;
 
-    const list = [...loadBookingsAdmin()];
+    const list = [...loadBookingsAdmin()].sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
 
     if (!list.length) {
       container.innerHTML = '<p style="color:var(--text-muted);font-size:0.84rem">暂无预约记录。</p>';
