@@ -1804,6 +1804,216 @@ document.addEventListener('DOMContentLoaded', () => {
     await syncBookingsFromSupabase();
   }
 
+  function getTomorrowBusinessParts() {
+    const today = getBusinessTodayParts();
+    const date = new Date(Date.UTC(today.year, today.month - 1, today.day));
+    date.setUTCDate(date.getUTCDate() + 1);
+
+    return {
+      year: date.getUTCFullYear(),
+      month: date.getUTCMonth() + 1,
+      day: date.getUTCDate(),
+    };
+  }
+
+  function bookingDaysInMonth(year, month) {
+    return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  }
+
+  function syncBookingDateValue() {
+    const hidden = document.getElementById('booking-date');
+    const yearInput = document.getElementById('booking-year');
+    const monthSelect = document.getElementById('booking-month');
+    const daySelect = document.getElementById('booking-day');
+
+    if (!hidden || !yearInput || !monthSelect || !daySelect) return;
+
+    hidden.value = '';
+
+    const yearText = yearInput.value.trim();
+    if (!/^\d{4}$/.test(yearText)) return;
+
+    const year = Number(yearText);
+    const month = Number(monthSelect.value);
+    const day = Number(daySelect.value);
+    if (!month || !day) return;
+
+    const tomorrow = getTomorrowBusinessParts();
+    const maxDay = bookingDaysInMonth(year, month);
+    if (day < 1 || day > maxDay) return;
+
+    const selectedKey =
+      year * 10000 +
+      month * 100 +
+      day;
+    const tomorrowKey =
+      tomorrow.year * 10000 +
+      tomorrow.month * 100 +
+      tomorrow.day;
+
+    if (selectedKey < tomorrowKey) return;
+
+    hidden.value =
+      String(year).padStart(4, '0') +
+      '-' +
+      String(month).padStart(2, '0') +
+      '-' +
+      String(day).padStart(2, '0');
+  }
+
+  function updateBookingDateChoices() {
+    const yearInput = document.getElementById('booking-year');
+    const monthSelect = document.getElementById('booking-month');
+    const daySelect = document.getElementById('booking-day');
+
+    if (!yearInput || !monthSelect || !daySelect) return;
+
+    const tomorrow = getTomorrowBusinessParts();
+    const yearText = yearInput.value.trim();
+    const year = /^\d{4}$/.test(yearText) ? Number(yearText) : null;
+
+    Array.from(monthSelect.options).forEach((option) => {
+      if (!option.value) return;
+      const month = Number(option.value);
+
+      option.disabled =
+        year !== null &&
+        (year < tomorrow.year ||
+          (year === tomorrow.year && month < tomorrow.month));
+    });
+
+    if (
+      monthSelect.value &&
+      monthSelect.selectedOptions[0] &&
+      monthSelect.selectedOptions[0].disabled
+    ) {
+      monthSelect.value = '';
+    }
+
+    const previousDay = Number(daySelect.value);
+    daySelect.innerHTML = '<option value="">日</option>';
+
+    const month = Number(monthSelect.value);
+
+    if (year !== null && year >= tomorrow.year && month) {
+      const maxDay = bookingDaysInMonth(year, month);
+      let firstDay = 1;
+
+      if (year === tomorrow.year && month === tomorrow.month) {
+        firstDay = tomorrow.day;
+      }
+
+      for (let day = firstDay; day <= maxDay; day += 1) {
+        const option = document.createElement('option');
+        option.value = String(day).padStart(2, '0');
+        option.textContent = String(day).padStart(2, '0') + ' 日';
+        daySelect.appendChild(option);
+      }
+
+      if (previousDay >= firstDay && previousDay <= maxDay) {
+        daySelect.value = String(previousDay).padStart(2, '0');
+      }
+    }
+
+    syncBookingDateValue();
+  }
+
+  function ensureBookingDateField() {
+    const original = document.getElementById('booking-date');
+    if (!original || document.getElementById('booking-year')) return;
+
+    const field = original.closest('.field');
+    if (!field) return;
+
+    original.type = 'hidden';
+    original.removeAttribute('placeholder');
+    original.removeAttribute('min');
+    original.removeAttribute('max');
+
+    const controls = document.createElement('div');
+    controls.className = 'booking-date-select-row';
+    controls.innerHTML = `
+      <input
+        id="booking-year"
+        class="field-input booking-year-input"
+        type="text"
+        inputmode="numeric"
+        maxlength="4"
+        placeholder="YYYY"
+        aria-label="预约年份"
+      />
+      <select
+        id="booking-month"
+        class="field-input"
+        aria-label="预约月份"
+      >
+        <option value="">月</option>
+        ${Array.from({ length: 12 }, (_, index) => {
+          const month = String(index + 1).padStart(2, '0');
+          return `<option value="${month}">${month} 月</option>`;
+        }).join('')}
+      </select>
+      <select
+        id="booking-day"
+        class="field-input"
+        aria-label="预约日期"
+      >
+        <option value="">日</option>
+      </select>
+    `;
+
+    original.insertAdjacentElement('afterend', controls);
+
+    if (!document.getElementById('huiwen-booking-date-styles')) {
+      const style = document.createElement('style');
+      style.id = 'huiwen-booking-date-styles';
+      style.textContent = `
+        .booking-date-select-row{
+          display:grid;
+          grid-template-columns:1.15fr 1fr 1fr;
+          gap:8px;
+          width:100%;
+        }
+        .booking-date-select-row .field-input{
+          min-width:0;
+          width:100%;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const yearInput = document.getElementById('booking-year');
+    const monthSelect = document.getElementById('booking-month');
+    const daySelect = document.getElementById('booking-day');
+
+    yearInput.addEventListener('input', () => {
+      yearInput.value = yearInput.value.replace(/\D/g, '').slice(0, 4);
+      updateBookingDateChoices();
+    });
+
+    yearInput.addEventListener('blur', () => {
+      const tomorrow = getTomorrowBusinessParts();
+      const value = yearInput.value.trim();
+
+      if (value && !/^\d{4}$/.test(value)) {
+        alert('预约年份必须是 4 位数字。');
+        yearInput.focus();
+        return;
+      }
+
+      if (/^\d{4}$/.test(value) && Number(value) < tomorrow.year) {
+        alert('预约年份不能早于可预约年份。');
+        yearInput.value = '';
+        updateBookingDateChoices();
+      }
+    });
+
+    monthSelect.addEventListener('change', updateBookingDateChoices);
+    daySelect.addEventListener('change', syncBookingDateValue);
+
+    updateBookingDateChoices();
+  }
+
   function normalizeBookingPhone(value) {
     const raw = String(value || '').trim();
     if (!raw.startsWith('+')) return '';
@@ -1843,16 +2053,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function initBooking() {
     ensureBookingPhoneField();
+    ensureBookingDateField();
     const bookingDuration = document.getElementById('booking-duration');
-
-    if (bookingDateInput) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const yyyy = tomorrow.getFullYear();
-      const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
-      const dd = String(tomorrow.getDate()).padStart(2, '0');
-      bookingDateInput.min = `${yyyy}-${mm}-${dd}`;
-    }
 
     if (bookingBtn) {
       bookingBtn.addEventListener('click', async () => {
