@@ -66,7 +66,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const CONSULT_RATE_CAD = 45; // 每半小时 $45 加币
   const CONSULT_MAX_MINUTES = 120; // 单次不超过 2 小时
   const CONSULT_FREE_MINUTES = 30; // 购买客户首半小时免费
-  const POINTS_PER_REGISTRATION = 10; // 下线注册，上级得 10 善缘值（缘）
+  const POINTS_PER_REGISTRATION = 10; // 仅直推注册：直接上级 +10 缘
+  const POINTS_PER_DIRECT_PURCHASE = 20; // 仅直推购买：直接上级每单固定 +20 缘
   const WITHDRAW_THRESHOLD = 100; // Demo：满 100 可提现
   // 发货服务地址：如配置可用于邮件服务；客户订单页不提供专属符下载。
   const DELIVERY_API_URL = '';
@@ -1658,7 +1659,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const buyer = ensureUserFinancialFields(allUsers[userIndex]);
     const amount = product.price;
 
-    // 向上 5 级发放佣金，同时发放等值善缘值（1 元佣金 = 1 缘）
+    // 佣金：仍按 5 级 20% / 15% / 10% / 5% / 3% 向上发放。
+    // 善缘值：完全独立，只奖励直接上级；每次直推用户完成购买固定 +20 缘。
     let parentCode = buyer.parentReferral;
     for (let level = 0; level < COMMISSION_RATES.length && parentCode; level += 1) {
       const rate = COMMISSION_RATES[level];
@@ -1669,9 +1671,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const commission = amount * rate;
       parent.totalCommission += commission;
       parent.commissionBalance += commission;
-      parent.points = Math.round((parent.points || 0) + commission); // 佣金等值善缘值，四舍五入为整数
 
       parentCode = parent.parentReferral;
+    }
+
+    if (buyer.parentReferral) {
+      const directParent = allUsers.find(
+        (u) => u.referralCode === buyer.parentReferral,
+      );
+      if (directParent) {
+        ensureUserFinancialFields(directParent);
+        directParent.points =
+          Math.round(directParent.points || 0) + POINTS_PER_DIRECT_PURCHASE;
+      }
     }
 
     allUsers[userIndex] = buyer;
@@ -2364,7 +2376,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return [
       { q: '提现|佣金|余额', a: '累计佣金满 ￥100 可申请提现。在「佣金与善缘值」页点击「申请提现」即可。Demo 仅做本地模拟。' },
       { q: '邀请|推荐|下线|团队', a: '分享你的专属链接给好友，对方通过链接注册即成为你的下线。在「团队」页可查看下级结构。' },
-      { q: '善缘值|善缘|积分', a: '善缘值通过传播积累：下线注册得 10 缘，下线购买时你获得的佣金等值转为善缘值（1 元佣金 = 1 缘）。自己购买不获得善缘值。' },
+      { q: '善缘值|善缘|积分', a: '善缘值可用于参与不同类型及不同等级的专属活动，具体资格以相关活动规则为准。' },
       { q: '预约|真人|顾问', a: '如需真人顾问，可在此页下方选择日期和时间段提交预约。' },
     ];
   }
@@ -2434,15 +2446,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     orders.forEach((order) => {
       const buyer = allUsers.find((u) => u.email === order.buyerEmail);
-      if (!buyer) return;
-      let parentCode = buyer.parentReferral;
-      for (let level = 0; level < COMMISSION_RATES.length && parentCode; level += 1) {
-        const parent = allUsers.find((u) => u.referralCode === parentCode);
-        if (!parent) break;
-        const commission = (order.price || 0) * COMMISSION_RATES[level];
-        parent.points = Math.round((parent.points || 0) + commission);
-        parentCode = parent.parentReferral;
-      }
+      if (!buyer || !buyer.parentReferral) return;
+      const directParent = allUsers.find(
+        (u) => u.referralCode === buyer.parentReferral,
+      );
+      if (!directParent) return;
+      directParent.points =
+        Math.round(directParent.points || 0) + POINTS_PER_DIRECT_PURCHASE;
     });
 
     saveUsers(allUsers);
