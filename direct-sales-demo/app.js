@@ -120,11 +120,14 @@ document.addEventListener('DOMContentLoaded', () => {
       homePanel.className = 'tab-panel tab-panel--active';
       homePanel.innerHTML = `
         <div class="home-announcements-shell">
-          ${['category1','category2'].map((category, index) => `
+          ${[
+            { category: 'category1', title: '最新公告' },
+            { category: 'category2', title: '社区掠影' },
+          ].map(({ category, title }) => `
             <section class="home-announcement-section" data-category="${category}">
               <div class="home-announcement-heading">
-                <h2>Category ${index + 1}</h2>
-                <div class="home-announcement-arrows" aria-label="Category ${index + 1} navigation">
+                <h2>${title}</h2>
+                <div class="home-announcement-arrows" aria-label="${title} navigation">
                   <button type="button" class="home-row-arrow" data-direction="left" aria-label="向左">‹</button>
                   <button type="button" class="home-row-arrow" data-direction="right" aria-label="向右">›</button>
                 </div>
