@@ -668,6 +668,250 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  function escapeAdminMemberText(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function getAdminUserCommissionBreakdown(user) {
+    if (!user) return [];
+
+    const ordersById = new Map(
+      (adminCache.orders || []).map((order) => [String(order.id || ''), order]),
+    );
+    const usersByEmail = new Map(
+      (adminCache.users || []).map((item) => [
+        String(item.email || '').toLowerCase(),
+        item,
+      ]),
+    );
+
+    const grouped = new Map();
+
+    (adminCache.commissions || []).forEach((record) => {
+      const recipientId = String(
+        record.recipient_id ?? record.recipientId ?? '',
+      );
+      if (recipientId !== String(user.id || '')) return;
+
+      const orderId = String(record.order_id ?? record.orderId ?? '');
+      const order = ordersById.get(orderId);
+      const buyerEmail = String(order?.buyerEmail || '');
+      const buyerUser = usersByEmail.get(buyerEmail.toLowerCase());
+      const buyerCode = buyerUser?.referralCode || '';
+      const level = Number(record.level || 0);
+      const amount = Number(record.amount || 0);
+      const key = `${buyerEmail}|${buyerCode}|${level}`;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          buyerEmail,
+          buyerCode,
+          level,
+          commission: 0,
+        });
+      }
+      grouped.get(key).commission += amount;
+    });
+
+    return Array.from(grouped.values()).sort(
+      (a, b) => b.commission - a.commission,
+    );
+  }
+
+  function renderAdminMemberOverview(user) {
+    if (!user) return '';
+
+    const users = loadUsers();
+    const direct = users.filter(
+      (item) => item.parentReferral === user.referralCode,
+    ).length;
+    const total = countAdminDescendants(user.referralCode, users);
+    const breakdown = getAdminUserCommissionBreakdown(user);
+
+    const breakdownHtml = breakdown.length
+      ? breakdown.map((item) => {
+          const who = item.buyerCode || item.buyerEmail || '未知用户';
+          return `
+            <div class="admin-member-breakdown-row">
+              <span>${escapeAdminMemberText(who)}（${item.level || '-'}级）</span>
+              <strong>￥${Number(item.commission || 0).toFixed(2)}</strong>
+            </div>
+          `;
+        }).join('')
+      : '<div class="admin-member-empty">暂无佣金明细</div>';
+
+    return `
+      <section class="admin-member-overview" data-member-code="${escapeAdminMemberText(user.referralCode || '')}">
+        <div class="admin-member-overview-head">
+          <div>
+            <div class="admin-member-overview-title">会员账户概览</div>
+            <div class="admin-member-overview-email">${escapeAdminMemberText(user.email || '')}</div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-small" id="admin-member-close">关闭</button>
+        </div>
+
+        <div class="admin-member-grid">
+          <div class="admin-member-field">
+            <span>邀请码</span>
+            <strong>${escapeAdminMemberText(user.referralCode || '—')}</strong>
+          </div>
+          <div class="admin-member-field">
+            <span>上级邀请码</span>
+            <strong>${escapeAdminMemberText(user.parentReferral || '—')}</strong>
+          </div>
+          <div class="admin-member-field">
+            <span>累计获得佣金</span>
+            <strong>￥${Number(user.totalCommission || 0).toFixed(2)}</strong>
+          </div>
+          <div class="admin-member-field">
+            <span>当前可提现金额</span>
+            <strong>￥${Number(user.commissionBalance || 0).toFixed(2)}</strong>
+          </div>
+          <div class="admin-member-field admin-member-field--goodwill">
+            <span>当前善缘值</span>
+            <strong>${Math.round(Number(user.points || 0))} 缘</strong>
+          </div>
+          <div class="admin-member-field">
+            <span>邀请统计</span>
+            <strong>直推 ${direct} 人 · 下级共 ${total} 人</strong>
+          </div>
+        </div>
+
+        <div class="admin-member-breakdown">
+          <div class="admin-member-breakdown-title">佣金明细</div>
+          ${breakdownHtml}
+        </div>
+      </section>
+    `;
+  }
+
+  function countAdminDescendants(code, users) {
+    const children = users.filter((item) => item.parentReferral === code);
+    return children.length + children.reduce(
+      (sum, child) =>
+        sum + countAdminDescendants(child.referralCode, users),
+      0,
+    );
+  }
+
+  function ensureAdminMemberTreeStyles() {
+    if (document.getElementById('huiwen-admin-member-tree-styles')) return;
+
+    const style = document.createElement('style');
+    style.id = 'huiwen-admin-member-tree-styles';
+    style.textContent = `
+      .user-tree-info{
+        cursor:pointer;
+        border-radius:10px;
+        padding:5px 8px;
+        transition:background .16s ease,border-color .16s ease;
+      }
+      .user-tree-info:hover{
+        background:rgba(224,177,78,.08);
+      }
+      .user-tree-financials{
+        display:inline-flex;
+        flex-wrap:wrap;
+        gap:6px 12px;
+        margin-top:4px;
+        font-size:.78rem;
+      }
+      .user-tree-financials .commission{
+        color:#e7bd62;
+      }
+      .user-tree-financials .goodwill{
+        color:#f0d47d;
+      }
+      .admin-member-overview{
+        margin:0 0 18px;
+        padding:18px;
+        border:1px solid rgba(224,177,78,.28);
+        border-radius:18px;
+        background:linear-gradient(145deg,rgba(224,177,78,.07),rgba(255,255,255,.018));
+      }
+      .admin-member-overview-head{
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:14px;
+        margin-bottom:16px;
+      }
+      .admin-member-overview-title{
+        font-size:1.05rem;
+        font-weight:700;
+        color:#f3ead9;
+      }
+      .admin-member-overview-email{
+        margin-top:4px;
+        color:var(--text-muted);
+        font-size:.83rem;
+        overflow-wrap:anywhere;
+      }
+      .admin-member-grid{
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:10px;
+      }
+      .admin-member-field{
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        align-items:center;
+        padding:11px 12px;
+        border:1px solid rgba(255,255,255,.07);
+        border-radius:12px;
+        background:rgba(0,0,0,.16);
+        font-size:.84rem;
+      }
+      .admin-member-field span{
+        color:var(--text-muted);
+      }
+      .admin-member-field strong{
+        color:#f3ead9;
+        text-align:right;
+        overflow-wrap:anywhere;
+      }
+      .admin-member-field--goodwill strong{
+        color:#e7bd62;
+      }
+      .admin-member-breakdown{
+        margin-top:14px;
+        border-top:1px solid rgba(255,255,255,.07);
+        padding-top:12px;
+      }
+      .admin-member-breakdown-title{
+        font-weight:700;
+        color:#f3ead9;
+        margin-bottom:8px;
+      }
+      .admin-member-breakdown-row{
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        padding:7px 0;
+        font-size:.82rem;
+        color:var(--text-muted);
+      }
+      .admin-member-breakdown-row strong{
+        color:#e7bd62;
+      }
+      .admin-member-empty{
+        color:var(--text-muted);
+        font-size:.82rem;
+      }
+      @media(max-width:700px){
+        .admin-member-grid{grid-template-columns:1fr}
+        .user-tree-financials{display:flex}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function renderTreeNode(node, depth, expandedSet, searchQuery) {
     const levelLabel = depth === 0 ? '根' : `第 ${depth} 级`;
     const hasChildren = node.children.length > 0;
@@ -683,11 +927,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         <button type="button" class="user-tree-toggle" aria-label="${isExpanded ? '收起' : '展开'}" ${!hasChildren ? 'disabled' : ''}>
           <span class="user-tree-chevron ${isExpanded ? 'expanded' : ''}">${hasChildren ? '▸' : ''}</span>
         </button>
-        <div class="user-tree-info">
-          <span class="user-tree-code">${node.user.referralCode}</span>
-          <span class="user-tree-email">${node.user.email}</span>
+        <div class="user-tree-info" role="button" tabindex="0" aria-label="查看会员账户">
+          <span class="user-tree-code">${escapeAdminMemberText(node.user.referralCode)}</span>
+          <span class="user-tree-email">${escapeAdminMemberText(node.user.email)}</span>
           <span class="user-tree-level">${levelLabel}</span>
           ${stats ? `<span class="user-tree-stats">${stats}</span>` : ''}
+          <span class="user-tree-financials">
+            <span class="commission">累计佣金 ￥${Number(node.user.totalCommission || 0).toFixed(2)}</span>
+            <span class="goodwill">善缘值 ${Math.round(Number(node.user.points || 0))} 缘</span>
+          </span>
         </div>
       </div>`;
     if (hasChildren) {
@@ -699,10 +947,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let userTreeExpandedSet = new Set();
   let userTreeSearchQuery = '';
+  let selectedAdminUserCode = '';
 
   function renderUsersPanel() {
     const container = document.getElementById('user-tree-admin');
     if (!container) return;
+
+    ensureAdminMemberTreeStyles();
 
     const users = loadUsers();
     const roots = users.filter((u) => !u.parentReferral || u.parentReferral === '');
@@ -742,8 +993,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    const parts = tree.map((node) => renderTreeNode(node, 0, userTreeExpandedSet, userTreeSearchQuery));
-    container.innerHTML = parts.join('');
+    const selectedUser = selectedAdminUserCode
+      ? users.find((item) => item.referralCode === selectedAdminUserCode)
+      : null;
+
+    const parts = tree.map((node) =>
+      renderTreeNode(node, 0, userTreeExpandedSet, userTreeSearchQuery),
+    );
+
+    container.innerHTML =
+      (selectedUser ? renderAdminMemberOverview(selectedUser) : '') +
+      parts.join('');
 
     container.querySelectorAll('.user-tree-toggle:not([disabled])').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -758,6 +1018,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderUsersPanel();
       });
     });
+
+    const openUser = (target) => {
+      const node = target.closest('.user-tree-node');
+      const code = node?.dataset?.code;
+      if (!code) return;
+      selectedAdminUserCode = code;
+      renderUsersPanel();
+      const overview = document.querySelector('.admin-member-overview');
+      if (overview) overview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+
+    container.querySelectorAll('.user-tree-info').forEach((info) => {
+      info.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openUser(info);
+      });
+      info.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openUser(info);
+      });
+    });
+
+    const closeButton = container.querySelector('#admin-member-close');
+    if (closeButton) {
+      closeButton.addEventListener('click', () => {
+        selectedAdminUserCode = '';
+        renderUsersPanel();
+      });
+    }
 
   }
 
