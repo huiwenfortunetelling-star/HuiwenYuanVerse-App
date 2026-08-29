@@ -457,8 +457,17 @@
   function applySpecialEnglishLabels() {
     if (currentLanguage() !== ENGLISH) return;
 
+    // IMPORTANT:
+    // Only mutate the DOM when a label actually needs changing.
+    // MutationObserver watches the page, so repeatedly assigning the same
+    // innerHTML/textContent can create an endless observer -> mutation loop.
     const logout = document.getElementById('btn-logout');
-    if (logout) logout.innerHTML = 'Log<br>out';
+    if (logout) {
+      const expectedLogout = 'Log<br>out';
+      if (logout.innerHTML !== expectedLogout) {
+        logout.innerHTML = expectedLogout;
+      }
+    }
 
     // Short navigation labels keep the existing one-line mobile menu usable.
     const navLabels = {
@@ -477,15 +486,42 @@
       if (!button) continue;
 
       if (tab === 'cart') {
-        const count = button.querySelector('#cart-tab-count');
-        const number = count ? count.textContent : '0';
-        button.innerHTML = `Cart <span id="cart-tab-count" class="cart-tab-count">${number}</span>`;
-      } else {
+        let count = button.querySelector('#cart-tab-count');
+
+        if (!count) {
+          const numberMatch = String(button.textContent || '').match(/(\d+)/);
+          const number = numberMatch ? numberMatch[1] : '0';
+
+          button.textContent = '';
+          button.appendChild(document.createTextNode('Cart '));
+
+          count = document.createElement('span');
+          count.id = 'cart-tab-count';
+          count.className = 'cart-tab-count';
+          count.textContent = number;
+          button.appendChild(count);
+        } else {
+          const firstNode = button.firstChild;
+          if (
+            !firstNode ||
+            firstNode.nodeType !== Node.TEXT_NODE ||
+            firstNode.nodeValue !== 'Cart '
+          ) {
+            if (firstNode && firstNode.nodeType === Node.TEXT_NODE) {
+              firstNode.nodeValue = 'Cart ';
+            } else {
+              button.insertBefore(document.createTextNode('Cart '), count);
+            }
+          }
+        }
+      } else if (button.textContent !== label) {
         button.textContent = label;
       }
     }
 
-    document.documentElement.lang = 'en';
+    if (document.documentElement.lang !== 'en') {
+      document.documentElement.lang = 'en';
+    }
   }
 
   function translateDocumentTitle() {
@@ -750,7 +786,7 @@
         return currentLanguage();
       },
       refresh: refreshEnglish,
-      version: '1.0.0',
+      version: '1.0.1',
     });
   }
 
