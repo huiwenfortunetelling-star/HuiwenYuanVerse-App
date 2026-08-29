@@ -140,10 +140,9 @@
     '后再预约。': ' before booking.',
     '真人咨询预约': 'Live Consultation Booking',
     '咨询规则': 'Consultation Rules',
-    '购买客户：首 30 分钟免费，系统自动计时': 'Customers: the first 30 minutes are free and timed automatically.',
-    '30 分钟时系统提示，继续需支付 $45 加币/半小时': 'After 30 minutes, continuing costs CAD $45 per half hour.',
     '单次咨询不超过 2 小时，超时需再次预约': 'Each consultation is limited to 2 hours.',
-    '可预约时间：每天 10:00–18:00，需提前至少 1 天': 'Available daily from 10:00–18:00; book at least 1 day in advance.',
+    '可预约时间：每天 10:00–18:00，需提前至少 3 天': 'Available daily from 10:00–18:00; book at least 3 days in advance.',
+    '请注意，预订时间为太平洋夏令时 (UTC-7)': 'Please note: booking times are in Pacific Daylight Time (UTC-7).',
     '预约日期': 'Booking Date',
     '预约时间': 'Booking Time',
     '请选择时间段': 'Select a time',
@@ -237,6 +236,7 @@
     '预约年份': 'Booking year',
     '预约年份必须是 4 位数字。': 'Booking year must be a 4-digit number.',
     '预约年份不能早于可预约年份。': 'Booking year cannot be earlier than the earliest available year.',
+    '预约年份必须在注册后 3 至 30 天的可预约范围内。': 'The booking year must fall within the 3-to-30-day window after registration.',
     '预约月份': 'Booking month',
     '请先登录。': 'Please sign in first.',
     '请填写有效联系电话，并包含国家 / 地区代码，例如 +1 604 555 1234。': 'Enter a valid phone number including the country/region code, e.g. +1 604 555 1234.',
@@ -244,6 +244,8 @@
     '预约已提交，当前状态为待确认。': 'Booking submitted and pending confirmation.',
     '这个时间段已经预约过了。': 'This time slot has already been booked.',
     '预约日期必须是今天之后。': 'The booking date must be after today.',
+    '预约日期无效。': 'The booking date is invalid.',
+    '预约时间必须在注册满 3 天后至注册后 30 天内。': 'The appointment must be at least 3 days and no more than 30 days after registration.',
     '预约提交失败，请稍后重试。': 'Could not submit the booking. Please try again.',
     '暂无预约': 'No bookings yet.',
     '待确认': 'Pending Confirmation',
@@ -786,7 +788,7 @@
         return currentLanguage();
       },
       refresh: refreshEnglish,
-      version: '1.0.1',
+      version: '1.0.3',
     });
   }
 
