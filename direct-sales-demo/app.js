@@ -1089,6 +1089,9 @@ document.addEventListener('DOMContentLoaded', () => {
       logoutBtn.style.display = 'inline-flex';
     }
     updateHeaderCurrentUser(loadCurrentUser());
+    if (document.getElementById('booking-year')) {
+      updateBookingDateChoices();
+    }
     activateHomeTab();
     syncHomeAnnouncements().catch((error) => {
       console.error('Announcement homepage load error:', error);
@@ -1819,20 +1822,110 @@ document.addEventListener('DOMContentLoaded', () => {
     await syncBookingsFromSupabase();
   }
 
-  function getTomorrowBusinessParts() {
-    const today = getBusinessTodayParts();
-    const date = new Date(Date.UTC(today.year, today.month - 1, today.day));
-    date.setUTCDate(date.getUTCDate() + 1);
+  // Booking time is intentionally fixed to PDT (UTC-7) all year.
+  // Boss explicitly does not want automatic PST/PDT switching for appointments.
+  function getPdtDateTimeParts(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+
+    const pdtClock = new Date(date.getTime() - 7 * 60 * 60 * 1000);
+    return {
+      year: pdtClock.getUTCFullYear(),
+      month: pdtClock.getUTCMonth() + 1,
+      day: pdtClock.getUTCDate(),
+      hour: pdtClock.getUTCHours(),
+      minute: pdtClock.getUTCMinutes(),
+    };
+  }
+
+  function bookingDateKey(parts) {
+    if (!parts) return null;
+    return parts.year * 10000 + parts.month * 100 + parts.day;
+  }
+
+  function bookingDateTimeKey(parts) {
+    if (!parts) return null;
+    return (
+      parts.year * 100000000 +
+      parts.month * 1000000 +
+      parts.day * 10000 +
+      parts.hour * 100 +
+      parts.minute
+    );
+  }
+
+  function getBookingRegistrationWindow() {
+    const user = loadCurrentUser();
+    const registeredAt = user?.createdAt ? new Date(user.createdAt) : null;
+    if (!registeredAt || Number.isNaN(registeredAt.getTime())) return null;
+
+    const minDate = new Date(registeredAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const maxDate = new Date(registeredAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const minParts = getPdtDateTimeParts(minDate);
+    const maxParts = getPdtDateTimeParts(maxDate);
+
+    if (!minParts || !maxParts) return null;
 
     return {
-      year: date.getUTCFullYear(),
-      month: date.getUTCMonth() + 1,
-      day: date.getUTCDate(),
+      minParts,
+      maxParts,
+      minDateKey: bookingDateKey(minParts),
+      maxDateKey: bookingDateKey(maxParts),
+      minDateTimeKey: bookingDateTimeKey(minParts),
+      maxDateTimeKey: bookingDateTimeKey(maxParts),
     };
   }
 
   function bookingDaysInMonth(year, month) {
     return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  }
+
+  function parseBookingSlotStart(slot) {
+    const match = String(slot || '').match(/^(\d{2}):(\d{2})-/);
+    if (!match) return null;
+    return { hour: Number(match[1]), minute: Number(match[2]) };
+  }
+
+  function isBookingDateTimeWithinRegistrationWindow(dateValue, slotValue) {
+    const windowRange = getBookingRegistrationWindow();
+    const slotStart = parseBookingSlotStart(slotValue);
+    const match = String(dateValue || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (!windowRange || !slotStart || !match) return false;
+
+    const selectedKey = bookingDateTimeKey({
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+      hour: slotStart.hour,
+      minute: slotStart.minute,
+    });
+
+    return (
+      selectedKey >= windowRange.minDateTimeKey &&
+      selectedKey <= windowRange.maxDateTimeKey
+    );
+  }
+
+  function updateBookingSlotChoices() {
+    if (!bookingSlotSelect) return;
+
+    const dateValue = bookingDateInput?.value || '';
+    const windowRange = getBookingRegistrationWindow();
+
+    Array.from(bookingSlotSelect.options).forEach((option) => {
+      if (!option.value) return;
+      option.disabled =
+        !windowRange ||
+        !dateValue ||
+        !isBookingDateTimeWithinRegistrationWindow(dateValue, option.value);
+    });
+
+    if (
+      bookingSlotSelect.value &&
+      bookingSlotSelect.selectedOptions[0]?.disabled
+    ) {
+      bookingSlotSelect.value = '';
+    }
   }
 
   function syncBookingDateValue() {
@@ -1846,27 +1939,34 @@ document.addEventListener('DOMContentLoaded', () => {
     hidden.value = '';
 
     const yearText = yearInput.value.trim();
-    if (!/^\d{4}$/.test(yearText)) return;
+    if (!/^\d{4}$/.test(yearText)) {
+      updateBookingSlotChoices();
+      return;
+    }
 
     const year = Number(yearText);
     const month = Number(monthSelect.value);
     const day = Number(daySelect.value);
-    if (!month || !day) return;
+    if (!month || !day) {
+      updateBookingSlotChoices();
+      return;
+    }
 
-    const tomorrow = getTomorrowBusinessParts();
+    const windowRange = getBookingRegistrationWindow();
     const maxDay = bookingDaysInMonth(year, month);
-    if (day < 1 || day > maxDay) return;
+    if (!windowRange || day < 1 || day > maxDay) {
+      updateBookingSlotChoices();
+      return;
+    }
 
-    const selectedKey =
-      year * 10000 +
-      month * 100 +
-      day;
-    const tomorrowKey =
-      tomorrow.year * 10000 +
-      tomorrow.month * 100 +
-      tomorrow.day;
-
-    if (selectedKey < tomorrowKey) return;
+    const selectedDateKey = year * 10000 + month * 100 + day;
+    if (
+      selectedDateKey < windowRange.minDateKey ||
+      selectedDateKey > windowRange.maxDateKey
+    ) {
+      updateBookingSlotChoices();
+      return;
+    }
 
     hidden.value =
       String(year).padStart(4, '0') +
@@ -1874,6 +1974,8 @@ document.addEventListener('DOMContentLoaded', () => {
       String(month).padStart(2, '0') +
       '-' +
       String(day).padStart(2, '0');
+
+    updateBookingSlotChoices();
   }
 
   function updateBookingDateChoices() {
@@ -1883,7 +1985,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!yearInput || !monthSelect || !daySelect) return;
 
-    const tomorrow = getTomorrowBusinessParts();
+    const windowRange = getBookingRegistrationWindow();
     const yearText = yearInput.value.trim();
     const year = /^\d{4}$/.test(yearText) ? Number(yearText) : null;
 
@@ -1893,8 +1995,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       option.disabled =
         year !== null &&
-        (year < tomorrow.year ||
-          (year === tomorrow.year && month < tomorrow.month));
+        (!windowRange ||
+          year < windowRange.minParts.year ||
+          year > windowRange.maxParts.year ||
+          (year === windowRange.minParts.year && month < windowRange.minParts.month) ||
+          (year === windowRange.maxParts.year && month > windowRange.maxParts.month));
     });
 
     if (
@@ -1910,23 +2015,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const month = Number(monthSelect.value);
 
-    if (year !== null && year >= tomorrow.year && month) {
-      const maxDay = bookingDaysInMonth(year, month);
+    if (windowRange && year !== null && month) {
+      const maxDayInMonth = bookingDaysInMonth(year, month);
       let firstDay = 1;
+      let lastDay = maxDayInMonth;
 
-      if (year === tomorrow.year && month === tomorrow.month) {
-        firstDay = tomorrow.day;
+      if (
+        year === windowRange.minParts.year &&
+        month === windowRange.minParts.month
+      ) {
+        firstDay = windowRange.minParts.day;
       }
 
-      for (let day = firstDay; day <= maxDay; day += 1) {
-        const option = document.createElement('option');
-        option.value = String(day).padStart(2, '0');
-        option.textContent = String(day).padStart(2, '0') + ' 日';
-        daySelect.appendChild(option);
+      if (
+        year === windowRange.maxParts.year &&
+        month === windowRange.maxParts.month
+      ) {
+        lastDay = Math.min(lastDay, windowRange.maxParts.day);
       }
 
-      if (previousDay >= firstDay && previousDay <= maxDay) {
-        daySelect.value = String(previousDay).padStart(2, '0');
+      if (firstDay <= lastDay) {
+        for (let day = firstDay; day <= lastDay; day += 1) {
+          const option = document.createElement('option');
+          option.value = String(day).padStart(2, '0');
+          option.textContent = String(day).padStart(2, '0') + ' 日';
+          daySelect.appendChild(option);
+        }
+
+        if (previousDay >= firstDay && previousDay <= lastDay) {
+          daySelect.value = String(previousDay).padStart(2, '0');
+        }
       }
     }
 
@@ -2007,7 +2125,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     yearInput.addEventListener('blur', () => {
-      const tomorrow = getTomorrowBusinessParts();
+      const windowRange = getBookingRegistrationWindow();
       const value = yearInput.value.trim();
 
       if (value && !/^\d{4}$/.test(value)) {
@@ -2016,8 +2134,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (/^\d{4}$/.test(value) && Number(value) < tomorrow.year) {
-        alert('预约年份不能早于可预约年份。');
+      if (
+        /^\d{4}$/.test(value) &&
+        (!windowRange ||
+          Number(value) < windowRange.minParts.year ||
+          Number(value) > windowRange.maxParts.year)
+      ) {
+        alert('预约年份必须在注册后 3 至 30 天的可预约范围内。');
         yearInput.value = '';
         updateBookingDateChoices();
       }
@@ -2103,6 +2226,14 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
+        if (!isBookingDateTimeWithinRegistrationWindow(date, slot)) {
+          if (bookingMessage) {
+            bookingMessage.textContent =
+              '预约时间必须在注册满 3 天后至注册后 30 天内。';
+          }
+          return;
+        }
+
         bookingBtn.disabled = true;
 
         try {
@@ -2118,9 +2249,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (bookingMessage) {
               bookingMessage.textContent = '这个时间段已经预约过了。';
             }
+          } else if (/booking outside registration window/i.test(message)) {
+            if (bookingMessage) {
+              bookingMessage.textContent =
+                '预约时间必须在注册满 3 天后至注册后 30 天内。';
+            }
           } else if (/invalid booking date/i.test(message)) {
             if (bookingMessage) {
-              bookingMessage.textContent = '预约日期必须是今天之后。';
+              bookingMessage.textContent = '预约日期无效。';
             }
           } else {
             if (bookingMessage) {
