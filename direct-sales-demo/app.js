@@ -67,7 +67,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const POINTS_PER_REGISTRATION = 10; // 仅直推注册：直接上级 +10 缘
   const POINTS_PER_DIRECT_PURCHASE = 20; // 仅直推购买：直接上级每单固定 +20 缘
   const WITHDRAW_THRESHOLD = 0.05; // TESTING. Change to 200 for production.
-  const WITHDRAW_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
   // 发货服务地址：如配置可用于邮件服务；客户订单页不提供专属符下载。
   const DELIVERY_API_URL = '';
 
@@ -989,14 +988,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return { blocked: true, reason: 'active' };
     }
 
-    const latest = withdrawals[0];
-    if (latest?.createdAt) {
-      const lastTime = new Date(latest.createdAt).getTime();
-      if (Number.isFinite(lastTime) && Date.now() - lastTime < WITHDRAW_COOLDOWN_MS) {
-        return { blocked: true, reason: 'cooldown' };
-      }
-    }
-
+    
     return { blocked: false, reason: '' };
   }
 
