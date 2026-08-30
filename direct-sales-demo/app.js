@@ -63,12 +63,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const STORAGE_KEY_POINTS_MIGRATION = 'huiwen_demo_points_migration_v1';
 
   const COMMISSION_RATES = [0.2, 0.15, 0.1, 0.05, 0.03]; // 1~5 级
-  const CONSULT_RATE_CAD = 45; // 每半小时 $45 加币
-  const CONSULT_MAX_MINUTES = 120; // 单次不超过 2 小时
-  const CONSULT_FREE_MINUTES = 30; // 购买客户首半小时免费
+  const CONSULT_MAX_MINUTES = 30; // 所有真人咨询固定 30 分钟
   const POINTS_PER_REGISTRATION = 10; // 仅直推注册：直接上级 +10 缘
   const POINTS_PER_DIRECT_PURCHASE = 20; // 仅直推购买：直接上级每单固定 +20 缘
-  const WITHDRAW_THRESHOLD = 100; // Demo：满 100 可提现
+  const WITHDRAW_THRESHOLD = 0.05; // Testing: minimum withdrawal is ￥0.05
   // 发货服务地址：如配置可用于邮件服务；客户订单页不提供专属符下载。
   const DELIVERY_API_URL = '';
 
@@ -91,10 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function ensureHomeShell() {
-    // Keep the brand title on one line, but intentionally split the subtitle
-    // and logout label to free horizontal space for the full referral code.
+    // Keep only the main brand title in the header.
     const subtitleEl = document.querySelector('.app-subtitle');
-    if (subtitleEl) subtitleEl.innerHTML = '电子图片 · 多级分销 ·<br>佣金与善缘值';
+    if (subtitleEl) subtitleEl.remove();
     const logoutEl = document.getElementById('btn-logout');
     if (logoutEl) logoutEl.innerHTML = '退<br>出';
 
@@ -1791,7 +1788,7 @@ document.addEventListener('DOMContentLoaded', () => {
       userEmail: item.user_email,
       date: item.booking_date,
       slot: item.booking_slot,
-      duration: Number(item.duration_minutes || 120),
+      duration: Number(item.duration_minutes || 30),
       status: item.status || 'pending',
       phoneNumber: item.phone_number || '',
       notes: item.notes || '',
@@ -1802,7 +1799,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return bookings;
   }
 
-  async function createBookingInSupabase(date, slot, duration, phoneNumber) {
+  async function createBookingInSupabase(date, slot, phoneNumber) {
     if (!supabaseClient) {
       throw new Error('Supabase is unavailable.');
     }
@@ -1811,7 +1808,7 @@ document.addEventListener('DOMContentLoaded', () => {
       p_booking_date: date,
       p_booking_slot: slot,
       p_phone_number: phoneNumber,
-      p_duration_minutes: duration,
+      p_duration_minutes: 30,
     });
 
     if (error) {
@@ -2192,7 +2189,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function initBooking() {
     ensureBookingPhoneField();
     ensureBookingDateField();
-    const bookingDuration = document.getElementById('booking-duration');
 
     if (bookingBtn) {
       bookingBtn.addEventListener('click', async () => {
@@ -2206,10 +2202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const slot = bookingSlotSelect.value;
         const phoneRaw = (document.getElementById('booking-phone')?.value || '').trim();
         const phoneNumber = normalizeBookingPhone(phoneRaw);
-        const duration = parseInt(
-          (bookingDuration && bookingDuration.value) || '120',
-          10,
-        );
+        const duration = 30;
 
         if (!phoneNumber) {
           if (bookingMessage) {
@@ -2237,7 +2230,7 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingBtn.disabled = true;
 
         try {
-          await createBookingInSupabase(date, slot, duration, phoneNumber);
+          await createBookingInSupabase(date, slot, phoneNumber);
           if (bookingMessage) {
             bookingMessage.textContent = '预约已提交，当前状态为待确认。';
           }
@@ -2327,7 +2320,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       return `<div class="booking-item-card" data-id="${b.id}">
         <span>${b.date} ${b.slot}</span>
-        <span>${b.duration || 120} 分钟</span>
+        <span>${b.duration || 30} 分钟</span>
         <span>${statusLabels[b.status] || b.status || '待确认'}</span>
         ${canStart ? `<button type="button" class="btn btn-ghost btn-small btn-start-consult" data-id="${b.id}">开始咨询</button>` : ''}
       </div>`;
@@ -2346,8 +2339,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const parts = (startStr || '00:00').split(':');
     const h = parseInt(parts[0], 10) || 0;
     const m = parseInt(parts[1], 10) || 0;
-    const start = new Date(date + 'T' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':00');
-    const end = new Date(start.getTime() + (booking.duration || 120) * 60000);
+    // Appointment times are fixed PDT (UTC-7), matching the booking rules.
+    const start = new Date(
+      date + 'T' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':00-07:00',
+    );
+    const end = new Date(start.getTime() + 30 * 60000);
     return now >= start && now <= end;
   }
 
@@ -2412,9 +2408,6 @@ document.addEventListener('DOMContentLoaded', () => {
       bookingId,
       userEmail: user.email,
       startTime: new Date().toISOString(),
-      isBuyer: isBuyer(user.email),
-      paidHalfHours: 0,
-      free30Shown: false,
       status: 'active',
     };
 
@@ -2447,32 +2440,12 @@ document.addEventListener('DOMContentLoaded', () => {
         clearInterval(consultTimerInterval);
         consultTimerInterval = null;
         endConsult();
-        alert('本次咨询已达 2 小时上限，需再次预约。');
+        alert('本次咨询已达到 30 分钟，咨询已结束。');
         return;
       }
 
-      if (mins >= CONSULT_FREE_MINUTES && !session.free30Shown) {
-        session.free30Shown = true;
-        saveConsultSession(session);
-        const msg = session.isBuyer
-          ? `免费时间已到。继续需支付 $${CONSULT_RATE_CAD} 加币/半小时。`
-          : `已咨询 30 分钟。继续需支付 $${CONSULT_RATE_CAD} 加币/半小时。`;
-        if (confirm(msg + '\n\n点击「确定」继续（Demo 模拟支付），「取消」结束咨询。')) {
-          session.paidHalfHours += 1;
-          saveConsultSession(session);
-        } else {
-          endConsult();
-        }
-      }
-
       if (statusEl) {
-        if (mins < CONSULT_FREE_MINUTES && session.isBuyer) {
-          statusEl.textContent = '免费咨询中（购买客户首 30 分钟免费）';
-        } else if (mins < CONSULT_FREE_MINUTES) {
-          statusEl.textContent = '咨询中（30 分钟后需付费继续）';
-        } else {
-          statusEl.textContent = `咨询中 · 已付费 ${session.paidHalfHours} 个半小时`;
-        }
+        statusEl.textContent = '咨询进行中 · 会议时长 30 分钟';
       }
     };
 
@@ -2513,7 +2486,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function getDefaultAiFaq() {
     return [
-      { q: '提现|佣金|余额', a: '累计佣金满 ￥100 可申请提现。在「佣金与善缘值」页点击「申请提现」即可。Demo 仅做本地模拟。' },
+      { q: '提现|佣金|余额', a: '累计佣金满 ￥0.05 可申请提现。在「佣金与善缘值」页点击「申请提现」即可。' },
       { q: '邀请|推荐|下线|团队', a: '分享你的专属链接给好友，对方通过链接注册即成为你的下线。在「团队」页可查看下级结构。' },
       { q: '善缘值|善缘|积分', a: '善缘值可用于参与不同类型及不同等级的专属活动，具体资格以相关活动规则为准。' },
       { q: '预约|真人|顾问', a: '如需真人顾问，可在此页下方选择日期和时间段提交预约。' },
