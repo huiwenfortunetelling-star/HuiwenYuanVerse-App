@@ -1081,8 +1081,6 @@ document.addEventListener('DOMContentLoaded', () => {
           fail('提现金额不能超过当前可提现余额。');
         } else if (/active withdrawal/i.test(errorText) || /pending withdrawal/i.test(errorText)) {
           fail('你已有一笔正在处理的提现申请，请等待处理完成。');
-        } else if (/withdrawal cooldown/i.test(errorText)) {
-          fail('距离上次提现申请未满 3 天，请稍后再试。');
         } else if (/invalid phone/i.test(errorText)) {
           fail('请填写有效电话号码，并包含国家 / 地区代码。');
         } else if (/invalid paypal/i.test(errorText)) {
@@ -1389,10 +1387,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const state = getWithdrawalBlockingState();
       if (state.reason === 'active') {
         alert('你已有一笔正在处理的提现申请，请等待处理完成。');
-        return;
-      }
-      if (state.reason === 'cooldown') {
-        alert('距离上次提现申请未满 3 天，请稍后再试。');
         return;
       }
 
