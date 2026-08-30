@@ -114,13 +114,35 @@
     '我的邀请码': 'My Referral Code',
     '上级邀请码（如果有）': 'Referrer Code (if any)',
     '累计获得佣金': 'Total Commission Earned',
-    '当前可提现金额（满 ￥0.05 可提现）': 'Available Balance (minimum ¥0.05 to withdraw)',
+    '当前可提现金额': 'Available Balance',
     '当前善缘值': 'Current Goodwill Points',
     '邀请统计': 'Referral Statistics',
     '申请提现': 'Request Withdrawal',
-    '满 ￥0.05 可提现': 'Minimum withdrawal: ¥0.05',
+    '测试期间最低 ￥0.05；正式最低 ￥200。每 3 天最多申请一次。': 'Testing minimum: ¥0.05; production minimum: ¥200. One withdrawal request every 3 days.',
     '提现记录': 'Withdrawal History',
     '暂无提现记录': 'No withdrawal history.',
+    '填写以下信息后提交申请。管理员审核后将通过 PayPal 手动付款。': 'Submit the information below. After review, the administrator will send the payout manually through PayPal.',
+    '名字': 'First Name',
+    '请输入名字': 'Enter first name',
+    '姓氏': 'Last Name',
+    '请输入姓氏': 'Enter last name',
+    '电话号码（含国家 / 地区代码）': 'Phone Number (include country/region code)',
+    '账单地址': 'Billing Address',
+    '请输入完整账单地址': 'Enter full billing address',
+    'PayPal 邮箱': 'PayPal Email',
+    '提现金额': 'Withdrawal Amount',
+    '请输入提现金额': 'Enter withdrawal amount',
+    '每 3 天最多申请一次提现。提交后，申请金额将从当前可提现余额中暂时扣除并进入审核。': 'You may submit one withdrawal request every 3 days. The requested amount is reserved from your available balance while it is under review.',
+    '必须拥有 PayPal 账户才能申请提现。没有 PayPal 账户？请先使用该邮箱注册 PayPal，完成后再回来提交提现申请。': 'A PayPal account is required for withdrawals. Don’t have one? Create a PayPal account with this email first, then return to submit your request.',
+    '提交提现申请': 'Submit Withdrawal Request',
+    '请填写名字。': 'Please enter your first name.',
+    '请填写姓氏。': 'Please enter your last name.',
+    '请填写有效电话号码，并包含国家 / 地区代码。': 'Enter a valid phone number including the country/region code.',
+    '请填写完整账单地址。': 'Please enter your full billing address.',
+    '请填写有效的 PayPal 邮箱。': 'Please enter a valid PayPal email address.',
+    '提现金额不能超过当前可提现余额。': 'The withdrawal amount cannot exceed your available balance.',
+    '你已有一笔正在处理的提现申请，请等待处理完成。': 'You already have a withdrawal request being processed. Please wait until it is completed.',
+    '距离上次提现申请未满 3 天，请稍后再试。': 'It has been less than 3 days since your last withdrawal request. Please try again later.',
 
     '我的分享链接': 'My Referral Link',
     '专属分享链接': 'Your Referral Link',
@@ -276,7 +298,7 @@
 
     '你好，我是 AI 咨询助手。请问有什么可以帮您？': 'Hello! I’m the AI assistant. How can I help?',
     '感谢您的提问。若以上未解答，可尝试：1) 在「团队」页查看邀请规则；2) 在「佣金与善缘值」页查看提现说明；3) 需要真人顾问时，请点击下方预约。': 'Thanks for your question. You can check your Team for referral information, your Wallet for withdrawal information, or book a live consultation below.',
-    '累计佣金满 ￥0.05 可申请提现。在「佣金与善缘值」页点击「申请提现」即可。': 'You can request a withdrawal once your commission balance reaches ¥0.05. Go to Wallet and select “Request Withdrawal”.',
+    '累计佣金满 ￥0.05 可申请提现。在「佣金与善缘值」页点击「申请提现」即可。': 'During testing, you can request a withdrawal once your commission balance reaches ¥0.05. Go to Wallet and select “Request Withdrawal”.',
     '分享你的专属链接给好友，对方通过链接注册即成为你的下线。在「团队」页可查看下级结构。': 'Share your referral link. Anyone who registers through it will be added to your team, which you can view under Team.',
     '善缘值可用于参与不同类型及不同等级的专属活动，具体资格以相关活动规则为准。': 'Goodwill Points may be used to qualify for selected activities. Eligibility depends on the rules of each activity.',
     '如需真人顾问，可在此页下方选择日期和时间段提交预约。': 'To speak with a live advisor, choose a date and time below and submit a booking.',
@@ -342,6 +364,12 @@
 
     match = core.match(/^(?:需满|需滿)\s*￥([\d.]+)\s*(?:可申请提现|可申請提現)，(?:当前余额|當前餘額)\s*￥([\d.]+)。$/);
     if (match) return `A minimum balance of ¥${match[1]} is required. Current balance: ¥${match[2]}.`;
+
+    match = core.match(/^(?:可输入|可輸入)\s*￥([\d.]+)\s*(?:至)\s*￥([\d.]+)。$/);
+    if (match) return `Enter an amount from ¥${match[1]} to ¥${match[2]}.`;
+
+    match = core.match(/^(?:提现金额不能低于|提現金額不能低於)\s*￥([\d.]+)。$/);
+    if (match) return `The withdrawal amount cannot be less than ¥${match[1]}.`;
 
     match = core.match(/^(?:确定申请提现全部可用余额|確定申請提現全部可用餘額)\s*￥([\d.]+)？(?:提交后将进入审核|提交後將進入審核)。$/);
     if (match) return `Request withdrawal of the full available balance of ¥${match[1]}? It will be submitted for review.`;
