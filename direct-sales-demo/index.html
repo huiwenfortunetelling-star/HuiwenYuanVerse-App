@@ -13,7 +13,6 @@
           <div class="logo-mark"></div>
           <div class="header-text">
             <h1 class="app-title">慧文国际善缘界</h1>
-            <p class="app-subtitle">电子图片 · 多级分销 · 佣金与善缘值</p>
           </div>
         </div>
         <div id="header-current-user" class="header-current-user" style="display:none"></div>
@@ -164,7 +163,7 @@
 
               <div class="field">
                 <div class="wallet-field-row">
-                  <span class="field-label">当前可提现金额（Demo：满 ￥100 可提现）</span>
+                  <span class="field-label">当前可提现金额（满 ￥0.05 可提现）</span>
                   <div id="wallet-balance" class="wallet-highlight">￥0.00</div>
                 </div>
               </div>
@@ -181,7 +180,7 @@
               </div>
               <div class="field">
                 <button id="btn-withdraw" type="button" class="btn btn-primary">申请提现</button>
-                <p id="withdraw-tip" class="wallet-subtext">满 ￥100 可提现（Demo 仅扣减余额）</p>
+                <p id="withdraw-tip" class="wallet-subtext">满 ￥0.05 可提现</p>
               </div>
               <div class="field" id="withdraw-history-wrap">
                 <span class="field-label">提现记录</span>
@@ -243,7 +242,7 @@
                 <div class="consult-rules">
                   <h4>咨询规则</h4>
                   <ul>
-                    <li>单次咨询不超过 2 小时，超时需再次预约</li>
+                    <li>咨询会议时长为 30 分钟</li>
                     <li>可预约时间：每天 10:00–18:00，需提前至少 3 天</li>
                     <li>请注意，预订时间为太平洋夏令时 (UTC-7)</li>
                   </ul>
@@ -268,15 +267,6 @@
                     <option value="16:30-17:00">16:30 - 17:00 PDT</option>
                     <option value="17:00-17:30">17:00 - 17:30 PDT</option>
                     <option value="17:30-18:00">17:30 - 18:00 PDT</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="field-label">预约时长</span>
-                  <select id="booking-duration" class="field-input">
-                    <option value="30">30 分钟</option>
-                    <option value="60">1 小时</option>
-                    <option value="90">1.5 小时</option>
-                    <option value="120" selected>2 小时（上限）</option>
                   </select>
                 </label>
                 <button id="btn-booking" class="btn btn-primary">提交预约</button>
