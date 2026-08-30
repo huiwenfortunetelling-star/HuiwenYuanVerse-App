@@ -163,7 +163,7 @@
 
               <div class="field">
                 <div class="wallet-field-row">
-                  <span class="field-label">当前可提现金额（满 ￥0.05 可提现）</span>
+                  <span class="field-label">当前可提现金额</span>
                   <div id="wallet-balance" class="wallet-highlight">￥0.00</div>
                 </div>
               </div>
@@ -180,7 +180,7 @@
               </div>
               <div class="field">
                 <button id="btn-withdraw" type="button" class="btn btn-primary">申请提现</button>
-                <p id="withdraw-tip" class="wallet-subtext">满 ￥0.05 可提现</p>
+                <p id="withdraw-tip" class="wallet-subtext">测试期间最低 ￥0.05；正式最低 ￥200。每 3 天最多申请一次。</p>
               </div>
               <div class="field" id="withdraw-history-wrap">
                 <span class="field-label">提现记录</span>
@@ -292,6 +292,60 @@
           </section>
         </section>
       </main>
+
+
+      <!-- 提现申请弹窗 -->
+      <div id="withdraw-modal" class="purchase-modal" hidden>
+        <div class="purchase-modal-backdrop"></div>
+        <div class="purchase-modal-content">
+          <h3 class="purchase-modal-title">申请提现</h3>
+          <p class="purchase-modal-tip">填写以下信息后提交申请。管理员审核后将通过 PayPal 手动付款。</p>
+
+          <label class="field">
+            <span class="field-label">名字</span>
+            <input id="withdraw-first-name" type="text" class="field-input" autocomplete="given-name" placeholder="请输入名字" />
+          </label>
+
+          <label class="field">
+            <span class="field-label">姓氏</span>
+            <input id="withdraw-last-name" type="text" class="field-input" autocomplete="family-name" placeholder="请输入姓氏" />
+          </label>
+
+          <label class="field">
+            <span class="field-label">电话号码（含国家 / 地区代码）</span>
+            <input id="withdraw-phone" type="tel" class="field-input" autocomplete="tel" inputmode="tel" placeholder="例如：+1 604 555 1234" />
+          </label>
+
+          <label class="field">
+            <span class="field-label">账单地址</span>
+            <input id="withdraw-billing-address" type="text" class="field-input" autocomplete="street-address" placeholder="请输入完整账单地址" />
+          </label>
+
+          <label class="field">
+            <span class="field-label">PayPal 邮箱</span>
+            <input id="withdraw-paypal-email" type="email" class="field-input" autocomplete="email" placeholder="name@example.com" />
+          </label>
+
+          <label class="field">
+            <span class="field-label">提现金额</span>
+            <input id="withdraw-amount" type="number" class="field-input" min="0.05" step="0.01" inputmode="decimal" placeholder="请输入提现金额" />
+            <span id="withdraw-amount-help" class="wallet-subtext" style="display:block;margin-top:6px"></span>
+          </label>
+
+          <p class="wallet-subtext" style="line-height:1.55;margin-top:4px">
+            每 3 天最多申请一次提现。提交后，申请金额将从当前可提现余额中暂时扣除并进入审核。
+          </p>
+          <p class="wallet-subtext" style="line-height:1.55;margin-top:8px">
+            必须拥有 PayPal 账户才能申请提现。没有 PayPal 账户？请先使用该邮箱注册 PayPal，完成后再回来提交提现申请。
+          </p>
+
+          <div class="purchase-modal-actions">
+            <button type="button" id="withdraw-modal-cancel" class="btn btn-ghost">取消</button>
+            <button type="button" id="withdraw-modal-submit" class="btn btn-primary">提交提现申请</button>
+          </div>
+          <p id="withdraw-modal-message" class="status-message"></p>
+        </div>
+      </div>
 
       <!-- 购买前填写信息弹窗 -->
       <div id="purchase-modal" class="purchase-modal" hidden>
