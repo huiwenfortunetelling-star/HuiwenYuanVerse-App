@@ -165,7 +165,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       email: w.email,
       amount: Number(w.amount || 0),
       status: w.status || 'pending',
+      firstName: w.first_name || '',
+      lastName: w.last_name || '',
+      phoneNumber: w.phone_number || '',
+      billingAddress: w.billing_address || '',
+      paypalEmail: w.paypal_email || '',
       createdAt: w.created_at,
+      updatedAt: w.updated_at || '',
     }));
 
     adminCache.commissions = payload.commissions || [];
@@ -306,6 +312,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     renderProductsPanel();
     renderOrdersPanel();
+    renderWithdrawalsPanel();
     renderUsersPanel();
     renderAnnouncementPanel();
     renderAiConsultPanel();
@@ -404,6 +411,69 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
 
+
+  function ensureWithdrawalAdminPanel() {
+    const nav = document.querySelector('.admin-nav');
+    const ordersBtn = nav?.querySelector('[data-panel="orders"]');
+    const ordersPanel = document.getElementById('panel-orders');
+    if (!nav || !ordersBtn || !ordersPanel) return;
+
+    if (!nav.querySelector('[data-panel="withdrawals"]')) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.panel = 'withdrawals';
+      btn.className = 'admin-nav-btn';
+      btn.innerHTML = '提现申请 <span id="nav-withdrawals-badge" class="nav-badge"></span>';
+      ordersBtn.insertAdjacentElement('afterend', btn);
+    }
+
+    if (!document.getElementById('panel-withdrawals')) {
+      const panel = document.createElement('section');
+      panel.id = 'panel-withdrawals';
+      panel.className = 'admin-panel';
+      panel.innerHTML = `
+        <div class="admin-card">
+          <h2 class="panel-title">提现申请 <span id="withdrawals-pending-badge" class="pending-badge"></span></h2>
+          <p class="panel-tip">用户提交提现资料后在此审核。实际付款由管理员通过 PayPal 手动完成。</p>
+          <div id="withdrawal-list-admin" class="order-list-admin"></div>
+        </div>
+      `;
+      ordersPanel.insertAdjacentElement('afterend', panel);
+    }
+
+    if (!document.getElementById('huiwen-withdrawal-admin-styles')) {
+      const style = document.createElement('style');
+      style.id = 'huiwen-withdrawal-admin-styles';
+      style.textContent = `
+        .withdrawal-item-admin{
+          display:grid;
+          grid-template-columns:minmax(115px,.38fr) minmax(0,1fr);
+          gap:18px;
+          padding:18px;
+          margin-bottom:12px;
+          border:1px solid rgba(255,255,255,.08);
+          border-radius:14px;
+          background:rgba(0,0,0,.16);
+        }
+        .withdrawal-summary-admin{display:grid;gap:7px;align-content:start}
+        .withdrawal-amount-admin{font-size:1.18rem;font-weight:800;color:#e7bd62}
+        .withdrawal-status-admin{font-size:.8rem}
+        .withdrawal-details-admin{display:grid;gap:7px;min-width:0}
+        .withdrawal-details-admin .row{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;font-size:.84rem}
+        .withdrawal-details-admin .label{color:var(--text-muted)}
+        .withdrawal-details-admin .value{overflow-wrap:anywhere}
+        .withdrawal-actions-admin{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+        @media(max-width:700px){
+          .withdrawal-item-admin{grid-template-columns:1fr}
+          .withdrawal-details-admin .row{grid-template-columns:95px minmax(0,1fr)}
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  ensureWithdrawalAdminPanel();
+
   const navBtns = document.querySelectorAll('.admin-nav-btn');
   const panels = document.querySelectorAll('.admin-panel');
 
@@ -417,6 +487,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       if (target === 'users') renderUsersPanel();
       if (target === 'orders') renderOrdersPanel();
+      if (target === 'withdrawals') renderWithdrawalsPanel();
     });
   });
 
@@ -2005,6 +2076,141 @@ document.addEventListener('DOMContentLoaded', async () => {
       saveAiFaq(list);
       closeFaqModal();
       renderAiConsultPanel();
+    });
+  }
+
+
+  function escapeWithdrawalText(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function formatWithdrawalAdminDate(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return (
+      d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0') + ' ' +
+      String(d.getHours()).padStart(2, '0') + ':' +
+      String(d.getMinutes()).padStart(2, '0')
+    );
+  }
+
+  async function updateWithdrawalAdminStatus(id, status) {
+    const { error } = await supabaseClient.rpc('admin_update_withdrawal_status', {
+      p_withdrawal_id: id,
+      p_status: status,
+    });
+    if (error) throw error;
+    await refreshAdminData();
+    renderWithdrawalsPanel();
+  }
+
+  function renderWithdrawalsPanel() {
+    const container = document.getElementById('withdrawal-list-admin');
+    if (!container) return;
+
+    const list = [...loadWithdrawalsAdmin()].sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    const pendingCount = list.filter((w) => w.status === 'pending' || w.status === 'approved').length;
+    const badge = document.getElementById('withdrawals-pending-badge');
+    if (badge) {
+      badge.textContent = pendingCount ? `处理中 ${pendingCount}` : '';
+      badge.className = 'pending-badge' + (pendingCount ? ' has-pending' : '');
+    }
+    const navBadge = document.getElementById('nav-withdrawals-badge');
+    if (navBadge) {
+      navBadge.textContent = pendingCount ? String(pendingCount) : '';
+      navBadge.className = 'nav-badge' + (pendingCount ? ' has-pending' : '');
+    }
+
+    if (!list.length) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:.84rem">暂无提现申请。</p>';
+      return;
+    }
+
+    const statusLabels = {
+      pending: '待审核',
+      approved: '已批准',
+      paid: '已支付',
+      rejected: '已拒绝',
+    };
+
+    container.innerHTML = list.map((w) => {
+      const fullName = [w.firstName, w.lastName].filter(Boolean).join(' ') || '—';
+      const status = statusLabels[w.status] || w.status || '待审核';
+      const canReview = w.status === 'pending';
+      const canFinish = w.status === 'pending' || w.status === 'approved';
+
+      return `<div class="withdrawal-item-admin" data-withdrawal-id="${escapeWithdrawalText(w.id)}">
+        <div class="withdrawal-summary-admin">
+          <div class="withdrawal-amount-admin">￥${Number(w.amount || 0).toFixed(2)}</div>
+          <div class="withdrawal-status-admin">${escapeWithdrawalText(status)}</div>
+          <div style="color:var(--text-muted);font-size:.78rem">${escapeWithdrawalText(formatWithdrawalAdminDate(w.createdAt))}</div>
+        </div>
+        <div class="withdrawal-details-admin">
+          <div class="row"><span class="label">会员邮箱</span><span class="value">${escapeWithdrawalText(w.email || '—')}</span></div>
+          <div class="row"><span class="label">姓名</span><span class="value">${escapeWithdrawalText(fullName)}</span></div>
+          <div class="row"><span class="label">联系电话</span><span class="value">${escapeWithdrawalText(w.phoneNumber || '—')}</span></div>
+          <div class="row"><span class="label">账单地址</span><span class="value">${escapeWithdrawalText(w.billingAddress || '—')}</span></div>
+          <div class="row"><span class="label">PayPal 邮箱</span><span class="value">${escapeWithdrawalText(w.paypalEmail || '—')}</span></div>
+          ${canFinish ? `<div class="withdrawal-actions-admin">
+            ${canReview ? `<button type="button" class="btn btn-ghost btn-small btn-withdraw-approve" data-id="${escapeWithdrawalText(w.id)}">批准</button>` : ''}
+            <button type="button" class="btn btn-small btn-withdraw-paid" data-id="${escapeWithdrawalText(w.id)}">标记已支付</button>
+            <button type="button" class="btn btn-ghost btn-small btn-withdraw-reject" data-id="${escapeWithdrawalText(w.id)}">拒绝</button>
+          </div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    container.querySelectorAll('.btn-withdraw-approve').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await updateWithdrawalAdminStatus(btn.dataset.id, 'approved');
+        } catch (error) {
+          console.error('Approve withdrawal error:', error);
+          alert('批准提现申请失败，请稍后重试。');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-withdraw-paid').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('确认已经通过 PayPal 向该用户完成付款，并标记为「已支付」吗？')) return;
+        btn.disabled = true;
+        try {
+          await updateWithdrawalAdminStatus(btn.dataset.id, 'paid');
+        } catch (error) {
+          console.error('Mark withdrawal paid error:', error);
+          alert('更新提现状态失败，请稍后重试。');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-withdraw-reject').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('确认拒绝这笔提现申请吗？申请金额将自动退回用户的可提现余额。')) return;
+        btn.disabled = true;
+        try {
+          await updateWithdrawalAdminStatus(btn.dataset.id, 'rejected');
+        } catch (error) {
+          console.error('Reject withdrawal error:', error);
+          alert('拒绝提现申请失败，请稍后重试。');
+          btn.disabled = false;
+        }
+      });
     });
   }
 
