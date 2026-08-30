@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
   ensureBirthdayField();
   ensureGenderField();
   ensureCartShell();
+  organizeWithdrawalUi();
 
   const tabButtons = document.querySelectorAll('.tab-bar .tab');
   const tabPanels = document.querySelectorAll('.tab-panel');
@@ -503,7 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function ensureGenderField() {
     if (document.getElementById('purchase-buyer-gender')) return;
 
-    const actions = document.querySelector('.purchase-modal-actions');
+    const actions = document.querySelector('#purchase-modal .purchase-modal-actions');
     if (!actions || !actions.parentNode) return;
 
     const field = document.createElement('label');
@@ -517,6 +518,39 @@ document.addEventListener('DOMContentLoaded', () => {
       </select>
     `;
     actions.parentNode.insertBefore(field, actions);
+  }
+
+  function organizeWithdrawalUi() {
+    const modal = document.getElementById('withdraw-modal');
+    const withdrawTip = document.getElementById('withdraw-tip');
+    if (!modal || !withdrawTip) return;
+
+    // Keep the testing/production minimum line compact on the Wallet page.
+    withdrawTip.textContent = '测试期间最低 ￥0.05；正式最低 ￥200。';
+
+    // These two paragraphs already exist in index.html. Move the actual DOM nodes
+    // instead of recreating their text so traditional.js / english.js can keep
+    // translating the same structural text without any index.html change.
+    const paragraphs = Array.from(modal.querySelectorAll('p.wallet-subtext'));
+    const frequencyNote = paragraphs.find((el) =>
+      String(el.textContent || '').includes('每 3 天最多申请一次提现')
+    );
+    const paypalNote = paragraphs.find((el) =>
+      String(el.textContent || '').includes('必须拥有 PayPal 账户才能申请提现')
+    );
+
+    let insertAfter = withdrawTip;
+
+    for (const note of [frequencyNote, paypalNote]) {
+      if (!note) continue;
+
+      note.style.lineHeight = '1.55';
+      note.style.marginTop = '8px';
+      note.dataset.withdrawWalletNote = '1';
+
+      insertAfter.insertAdjacentElement('afterend', note);
+      insertAfter = note;
+    }
   }
 
   function ensureCartShell() {
@@ -988,7 +1022,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return { blocked: true, reason: 'active' };
     }
 
-    
     return { blocked: false, reason: '' };
   }
 
@@ -1389,7 +1422,6 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('你已有一笔正在处理的提现申请，请等待处理完成。');
         return;
       }
-
       openWithdrawalModal(user);
     });
   }
