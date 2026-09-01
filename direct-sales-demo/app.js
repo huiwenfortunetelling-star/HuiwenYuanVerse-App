@@ -1993,9 +1993,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const registeredAt = user?.createdAt ? new Date(user.createdAt) : null;
     if (!registeredAt || Number.isNaN(registeredAt.getTime())) return null;
 
-    const minDate = new Date(registeredAt.getTime() + 3 * 24 * 60 * 60 * 1000);
-    const maxDate = new Date(registeredAt.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const minParts = getPdtDateTimeParts(minDate);
+    const registrationMinDate = new Date(
+      registeredAt.getTime() + 3 * 24 * 60 * 60 * 1000,
+    );
+    const maxDate = new Date(
+      registeredAt.getTime() + 30 * 24 * 60 * 60 * 1000,
+    );
+
+    // The real lower bound is whichever comes later:
+    // registration + 3 days, or the CURRENT instant.
+    // Current appointment time is interpreted as fixed PDT (UTC-7).
+    const now = new Date();
+    const effectiveMinDate = new Date(
+      Math.max(registrationMinDate.getTime(), now.getTime()),
+    );
+
+    const minParts = getPdtDateTimeParts(effectiveMinDate);
     const maxParts = getPdtDateTimeParts(maxDate);
 
     if (!minParts || !maxParts) return null;
@@ -2005,8 +2018,9 @@ document.addEventListener('DOMContentLoaded', () => {
       maxParts,
       minDateKey: bookingDateKey(minParts),
       maxDateKey: bookingDateKey(maxParts),
-      minDateTimeKey: bookingDateTimeKey(minParts),
-      maxDateTimeKey: bookingDateTimeKey(maxParts),
+      registrationMinMs: registrationMinDate.getTime(),
+      maxMs: maxDate.getTime(),
+      nowMs: now.getTime(),
     };
   }
 
@@ -2027,17 +2041,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!windowRange || !slotStart || !match) return false;
 
-    const selectedKey = bookingDateTimeKey({
-      year: Number(match[1]),
-      month: Number(match[2]),
-      day: Number(match[3]),
-      hour: slotStart.hour,
-      minute: slotStart.minute,
-    });
+    // Convert the selected fixed-PDT appointment time to a real UTC timestamp.
+    // PDT is always UTC-7 here by design, even during calendar periods that
+    // would normally use PST.
+    const selectedMs = Date.UTC(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      slotStart.hour + 7,
+      slotStart.minute,
+      0,
+      0,
+    );
 
     return (
-      selectedKey >= windowRange.minDateTimeKey &&
-      selectedKey <= windowRange.maxDateTimeKey
+      selectedMs > windowRange.nowMs &&
+      selectedMs >= windowRange.registrationMinMs &&
+      selectedMs <= windowRange.maxMs
+    );
+  }
+
+  function bookingDateHasAvailableSlot(year, month, day) {
+    if (!bookingSlotSelect) return false;
+
+    const dateValue =
+      String(year).padStart(4, '0') +
+      '-' +
+      String(month).padStart(2, '0') +
+      '-' +
+      String(day).padStart(2, '0');
+
+    return Array.from(bookingSlotSelect.options).some(
+      (option) =>
+        option.value &&
+        isBookingDateTimeWithinRegistrationWindow(dateValue, option.value),
     );
   }
 
@@ -2171,14 +2208,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (firstDay <= lastDay) {
         for (let day = firstDay; day <= lastDay; day += 1) {
+          // Do not show dates that have no remaining valid PDT appointment slot.
+          if (!bookingDateHasAvailableSlot(year, month, day)) continue;
+
           const option = document.createElement('option');
           option.value = String(day).padStart(2, '0');
           option.textContent = String(day).padStart(2, '0') + ' 日';
           daySelect.appendChild(option);
         }
 
-        if (previousDay >= firstDay && previousDay <= lastDay) {
-          daySelect.value = String(previousDay).padStart(2, '0');
+        const previousValue = String(previousDay).padStart(2, '0');
+        if (
+          previousDay >= firstDay &&
+          previousDay <= lastDay &&
+          Array.from(daySelect.options).some(
+            (option) => option.value === previousValue,
+          )
+        ) {
+          daySelect.value = previousValue;
         }
       }
     }
