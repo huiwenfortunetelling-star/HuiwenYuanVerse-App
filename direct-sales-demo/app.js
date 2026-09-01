@@ -2001,11 +2001,15 @@ document.addEventListener('DOMContentLoaded', () => {
     );
 
     // The real lower bound is whichever comes later:
-    // registration + 3 days, or the CURRENT instant.
-    // Current appointment time is interpreted as fixed PDT (UTC-7).
+    // registration + 3 days, or CURRENT TIME + 3 days.
+    // This enforces the displayed rule "book at least 3 days in advance".
+    // Appointment times are interpreted as fixed PDT (UTC-7).
     const now = new Date();
+    const currentMinDate = new Date(
+      now.getTime() + 3 * 24 * 60 * 60 * 1000,
+    );
     const effectiveMinDate = new Date(
-      Math.max(registrationMinDate.getTime(), now.getTime()),
+      Math.max(registrationMinDate.getTime(), currentMinDate.getTime()),
     );
 
     const minParts = getPdtDateTimeParts(effectiveMinDate);
@@ -2019,6 +2023,7 @@ document.addEventListener('DOMContentLoaded', () => {
       minDateKey: bookingDateKey(minParts),
       maxDateKey: bookingDateKey(maxParts),
       registrationMinMs: registrationMinDate.getTime(),
+      currentMinMs: currentMinDate.getTime(),
       maxMs: maxDate.getTime(),
       nowMs: now.getTime(),
     };
@@ -2055,7 +2060,7 @@ document.addEventListener('DOMContentLoaded', () => {
     );
 
     return (
-      selectedMs > windowRange.nowMs &&
+      selectedMs >= windowRange.currentMinMs &&
       selectedMs >= windowRange.registrationMinMs &&
       selectedMs <= windowRange.maxMs
     );
