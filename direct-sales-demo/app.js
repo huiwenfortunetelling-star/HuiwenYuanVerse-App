@@ -179,16 +179,81 @@ document.addEventListener('DOMContentLoaded', () => {
         .home-announcement-card::after{content:'';position:absolute;inset:auto 0 0;height:22%;background:linear-gradient(transparent,rgba(0,0,0,.28));pointer-events:none}
         .home-announcement-empty{min-height:120px;display:flex;align-items:center;color:var(--text-muted,#9aa3b5);font-size:.92rem}
 
-        /* Keep brand title and all front-end menu items on one line. */
-        .app-header{justify-content:flex-start!important;gap:clamp(5px,1vw,11px);padding:clamp(10px,2vw,14px) clamp(10px,2vw,18px)}
-        .app-header-left{min-width:0;flex:0 1 36%;max-width:36%;gap:clamp(5px,1vw,10px)}
-        .logo-mark{width:clamp(24px,6vw,38px);height:clamp(24px,6vw,38px);flex:0 0 auto}
+        /* Two-row customer header:
+           row 1 = logo/title + logout/language
+           row 2 = email/referral information with the full header width. */
+        .app-header{
+          display:grid!important;
+          grid-template-columns:minmax(0,1fr) auto!important;
+          grid-template-areas:
+            "brand actions"
+            "user user"!important;
+          align-items:center!important;
+          column-gap:clamp(8px,1.5vw,16px)!important;
+          row-gap:8px!important;
+          padding:clamp(10px,2vw,14px) clamp(10px,2vw,18px)!important;
+        }
+        .app-header-left{
+          grid-area:brand!important;
+          min-width:0!important;
+          max-width:none!important;
+          width:auto!important;
+          gap:clamp(6px,1vw,10px)!important;
+        }
+        .logo-mark{
+          width:clamp(28px,6vw,40px);
+          height:clamp(28px,6vw,40px);
+          flex:0 0 auto;
+        }
         .header-text{min-width:0}
-        .app-title{font-size:clamp(.62rem,2vw,1rem)!important;letter-spacing:.02em!important;white-space:nowrap!important}
-        .app-subtitle{font-size:clamp(.50rem,1.45vw,.76rem)!important;white-space:normal!important;line-height:1.35;overflow:visible;text-overflow:clip}
-        .header-current-user{font-size:clamp(.46rem,1.25vw,.72rem)!important;padding:5px clamp(6px,1vw,10px)!important;max-width:none!important;overflow:visible!important;text-overflow:clip!important;white-space:normal!important;flex:1 1 auto;min-width:0;display:flex!important;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;line-height:1.3;margin-left:-2px}
-        .header-current-user .header-user-line{display:block;white-space:nowrap;max-width:100%}
-        .header-logout{font-size:clamp(.48rem,1.2vw,.72rem)!important;padding:5px clamp(5px,1vw,8px)!important;flex:0 0 auto;line-height:1.15!important;text-align:center;white-space:normal!important;min-width:32px;margin-left:auto}
+        .app-title{
+          font-size:clamp(.72rem,2.2vw,1.05rem)!important;
+          letter-spacing:.02em!important;
+          white-space:nowrap!important;
+        }
+        .header-current-user{
+          grid-area:user!important;
+          width:100%!important;
+          max-width:none!important;
+          min-width:0!important;
+          box-sizing:border-box!important;
+          margin:0!important;
+          padding:6px clamp(8px,1.4vw,12px)!important;
+          display:flex!important;
+          flex-direction:row!important;
+          flex-wrap:wrap!important;
+          align-items:center!important;
+          justify-content:flex-start!important;
+          gap:3px clamp(12px,2.2vw,24px)!important;
+          line-height:1.35!important;
+          font-size:clamp(.56rem,1.35vw,.76rem)!important;
+          white-space:normal!important;
+          overflow:visible!important;
+          text-overflow:clip!important;
+        }
+        .header-current-user .header-user-line{
+          display:block;
+          min-width:0;
+          max-width:100%;
+          white-space:normal!important;
+          overflow-wrap:anywhere;
+          word-break:break-word;
+        }
+        .header-logout{
+          font-size:clamp(.48rem,1.2vw,.72rem)!important;
+          padding:5px clamp(5px,1vw,8px)!important;
+          flex:0 0 auto;
+          line-height:1.15!important;
+          text-align:center;
+          white-space:normal!important;
+          min-width:32px;
+          margin-left:0!important;
+        }
+        #huiwen-language-wrap{
+          grid-area:actions!important;
+          margin-left:0!important;
+          align-self:center!important;
+        }
 
         .tab-bar{display:flex!important;grid-template-columns:none!important;flex-wrap:nowrap!important;gap:clamp(1px,.35vw,4px)!important;padding:3px!important;overflow:hidden}
         .tab-bar .tab{flex:.8 1 0;min-width:0;white-space:nowrap!important;font-size:clamp(.42rem,1.6vw,.76rem)!important;padding:6px 1px!important;letter-spacing:-.03em}
@@ -197,10 +262,14 @@ document.addEventListener('DOMContentLoaded', () => {
         .tab-bar .tab[data-tab="support"]{flex:1.15 1 0}
 
         @media (max-width:700px){
-          .app-header-left{flex-basis:32%;max-width:32%}
-          .app-title{font-size:clamp(.56rem,2.7vw,.78rem)!important}
-          .app-subtitle{font-size:clamp(.44rem,2vw,.62rem)!important}
-          .header-current-user{font-size:clamp(.39rem,1.8vw,.56rem)!important;padding:4px 5px!important;gap:0;margin-left:-1px}
+          .app-header{row-gap:6px!important}
+          .app-header-left{max-width:none!important}
+          .app-title{font-size:clamp(.64rem,3vw,.86rem)!important}
+          .header-current-user{
+            font-size:clamp(.46rem,2vw,.60rem)!important;
+            padding:5px 7px!important;
+            gap:2px 10px!important;
+          }
           .header-logout{font-size:clamp(.43rem,1.9vw,.58rem)!important;padding:4px 5px!important;min-width:28px}
           .home-announcements-shell{gap:1.55rem}
           [data-announcement-row="category1"] .home-announcement-card{flex-basis:clamp(220px,68vw,300px);border-radius:16px}
@@ -1989,30 +2058,21 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getBookingRegistrationWindow() {
-    const user = loadCurrentUser();
-    const registeredAt = user?.createdAt ? new Date(user.createdAt) : null;
-    if (!registeredAt || Number.isNaN(registeredAt.getTime())) return null;
-
-    const registrationMinDate = new Date(
-      registeredAt.getTime() + 3 * 24 * 60 * 60 * 1000,
-    );
-    const maxDate = new Date(
-      registeredAt.getTime() + 30 * 24 * 60 * 60 * 1000,
-    );
-
-    // The real lower bound is whichever comes later:
-    // registration + 3 days, or CURRENT TIME + 3 days.
-    // This enforces the displayed rule "book at least 3 days in advance".
-    // Appointment times are interpreted as fixed PDT (UTC-7).
+    // Booking eligibility is based ONLY on the current instant.
+    // Registration time has no effect on booking availability.
+    //
+    // Earliest appointment: current time + 3 days.
+    // Latest appointment:   current time + 30 days.
+    // All displayed appointment times are interpreted as fixed PDT (UTC-7).
     const now = new Date();
-    const currentMinDate = new Date(
+    const minDate = new Date(
       now.getTime() + 3 * 24 * 60 * 60 * 1000,
     );
-    const effectiveMinDate = new Date(
-      Math.max(registrationMinDate.getTime(), currentMinDate.getTime()),
+    const maxDate = new Date(
+      now.getTime() + 30 * 24 * 60 * 60 * 1000,
     );
 
-    const minParts = getPdtDateTimeParts(effectiveMinDate);
+    const minParts = getPdtDateTimeParts(minDate);
     const maxParts = getPdtDateTimeParts(maxDate);
 
     if (!minParts || !maxParts) return null;
@@ -2022,8 +2082,7 @@ document.addEventListener('DOMContentLoaded', () => {
       maxParts,
       minDateKey: bookingDateKey(minParts),
       maxDateKey: bookingDateKey(maxParts),
-      registrationMinMs: registrationMinDate.getTime(),
-      currentMinMs: currentMinDate.getTime(),
+      minMs: minDate.getTime(),
       maxMs: maxDate.getTime(),
       nowMs: now.getTime(),
     };
@@ -2060,8 +2119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     );
 
     return (
-      selectedMs >= windowRange.currentMinMs &&
-      selectedMs >= windowRange.registrationMinMs &&
+      selectedMs >= windowRange.minMs &&
       selectedMs <= windowRange.maxMs
     );
   }
@@ -2253,15 +2311,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const controls = document.createElement('div');
     controls.className = 'booking-date-select-row';
     controls.innerHTML = `
-      <input
-        id="booking-year"
-        class="field-input booking-year-input"
-        type="text"
-        inputmode="numeric"
-        maxlength="4"
-        placeholder="YYYY"
-        aria-label="预约年份"
-      />
+      <div class="booking-year-wrap">
+        <input
+          id="booking-year"
+          class="field-input booking-year-input"
+          type="text"
+          inputmode="numeric"
+          maxlength="4"
+          placeholder="YYYY"
+          aria-label="预约年份"
+        />
+        <span class="booking-year-unit" aria-hidden="true">${
+          (() => {
+            try {
+              return localStorage.getItem('huiwen_ui_language') === 'en'
+                ? 'Year'
+                : '年';
+            } catch {
+              return '年';
+            }
+          })()
+        }</span>
+      </div>
       <select
         id="booking-month"
         class="field-input"
@@ -2298,6 +2369,25 @@ document.addEventListener('DOMContentLoaded', () => {
           min-width:0;
           width:100%;
         }
+        .booking-year-wrap{
+          position:relative;
+          min-width:0;
+          width:100%;
+        }
+        .booking-year-wrap .booking-year-input{
+          padding-right:3.35rem;
+        }
+        .booking-year-unit{
+          position:absolute;
+          right:14px;
+          top:50%;
+          transform:translateY(-50%);
+          color:inherit;
+          opacity:.9;
+          pointer-events:none;
+          white-space:nowrap;
+          font-size:.95em;
+        }
       `;
       document.head.appendChild(style);
     }
@@ -2327,7 +2417,7 @@ document.addEventListener('DOMContentLoaded', () => {
           Number(value) < windowRange.minParts.year ||
           Number(value) > windowRange.maxParts.year)
       ) {
-        alert('预约年份必须在注册后 3 至 30 天的可预约范围内。');
+        alert('预约年份必须在从当前时间起 3 至 30 天的可预约范围内。');
         yearInput.value = '';
         updateBookingDateChoices();
       }
@@ -2412,7 +2502,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isBookingDateTimeWithinRegistrationWindow(date, slot)) {
           if (bookingMessage) {
             bookingMessage.textContent =
-              '预约时间必须在注册满 3 天后至注册后 30 天内。';
+              '预约时间必须在从当前时间起 3 至 30 天内。';
           }
           return;
         }
@@ -2432,10 +2522,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (bookingMessage) {
               bookingMessage.textContent = '这个时间段已经预约过了。';
             }
-          } else if (/booking outside registration window/i.test(message)) {
+          } else if (
+            /booking requires 3 days advance notice/i.test(message) ||
+            /booking exceeds 30 day window/i.test(message) ||
+            /booking outside registration window/i.test(message)
+          ) {
             if (bookingMessage) {
               bookingMessage.textContent =
-                '预约时间必须在注册满 3 天后至注册后 30 天内。';
+                '预约时间必须在从当前时间起 3 至 30 天内。';
             }
           } else if (/invalid booking date/i.test(message)) {
             if (bookingMessage) {
