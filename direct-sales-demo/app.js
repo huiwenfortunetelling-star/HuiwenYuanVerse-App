@@ -201,9 +201,13 @@ document.addEventListener('DOMContentLoaded', () => {
           gap:clamp(6px,1vw,10px)!important;
         }
         .logo-mark{
-          width:clamp(28px,6vw,40px);
-          height:clamp(28px,6vw,40px);
+          width:clamp(34px,7vw,48px);
+          height:clamp(34px,7vw,48px);
           flex:0 0 auto;
+          background:url('/huiwen-logo.png') center/contain no-repeat!important;
+          border:0!important;
+          border-radius:50%!important;
+          box-shadow:none!important;
         }
         .header-text{min-width:0}
         .app-title{
@@ -486,16 +490,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const controls = document.createElement('div');
     controls.className = 'birthday-select-row';
     controls.innerHTML = `
-      <input
-        id="purchase-buyer-year"
-        class="field-input birthday-year-input"
-        type="text"
-        inputmode="numeric"
-        autocomplete="bday-year"
-        maxlength="4"
-        placeholder="YYYY"
-        aria-label="出生年份"
-      />
+      <div class="birthday-year-wrap">
+        <input
+          id="purchase-buyer-year"
+          class="field-input birthday-year-input"
+          type="text"
+          inputmode="numeric"
+          autocomplete="bday-year"
+          maxlength="4"
+          placeholder="YYYY"
+          aria-label="出生年份"
+        />
+        <span class="birthday-year-unit" aria-hidden="true">${
+          (() => {
+            try {
+              return localStorage.getItem('huiwen_ui_language') === 'en'
+                ? 'Year'
+                : '年';
+            } catch {
+              return '年';
+            }
+          })()
+        }</span>
+      </div>
       <select
         id="purchase-buyer-month"
         class="field-input"
@@ -533,6 +550,25 @@ document.addEventListener('DOMContentLoaded', () => {
         .birthday-select-row .field-input{
           min-width:0;
           width:100%;
+        }
+        .birthday-year-wrap{
+          position:relative;
+          min-width:0;
+          width:100%;
+        }
+        .birthday-year-wrap .birthday-year-input{
+          padding-right:3.35rem;
+        }
+        .birthday-year-unit{
+          position:absolute;
+          right:14px;
+          top:50%;
+          transform:translateY(-50%);
+          color:inherit;
+          opacity:.9;
+          pointer-events:none;
+          white-space:nowrap;
+          font-size:.95em;
         }
       `;
       document.head.appendChild(style);
@@ -1345,6 +1381,27 @@ document.addEventListener('DOMContentLoaded', () => {
     updateHeaderCurrentUser(null);
   }
 
+  function isLikelyValidEmail(value) {
+    const email = String(value || '').trim();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  function getAuthEmailRedirectUrl() {
+    // Keep email confirmation redirects on the production app itself.
+    return window.location.origin + window.location.pathname;
+  }
+
+  function getPendingReferralFromAuthUser(authUser, fallbackReferral = '') {
+    const fallback = String(fallbackReferral || '').trim().toUpperCase();
+    if (fallback) return fallback;
+
+    const metadataReferral = String(
+      authUser?.user_metadata?.pending_referral || '',
+    ).trim().toUpperCase();
+
+    return metadataReferral || '';
+  }
+
   async function handleAuth() {
     const email = emailInput.value.trim().toLowerCase();
     const password = passwordInput.value.trim();
@@ -1352,6 +1409,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!email || !password) {
       alert('请输入邮箱和密码。');
+      return;
+    }
+
+    if (!isLikelyValidEmail(email)) {
+      alert('请输入有效的邮箱地址。');
       return;
     }
 
@@ -1374,12 +1436,28 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!signInError && signInData?.user) {
         authUser = signInData.user;
       } else {
+        const signInMessage = String(signInError?.message || '');
+
+        // Existing but unverified accounts must not fall through into another
+        // signup attempt. Supabase will only create a session after verification.
+        if (/email.*not.*confirm|not.*confirm.*email/i.test(signInMessage)) {
+          alert('该邮箱尚未验证。请先打开验证邮件并点击确认链接。');
+          return;
+        }
+
         const {
           data: signUpData,
           error: signUpError,
         } = await supabaseClient.auth.signUp({
           email,
           password,
+          options: {
+            emailRedirectTo: getAuthEmailRedirectUrl(),
+            data: {
+              // Preserve the referral through the email-confirmation round trip.
+              pending_referral: referral || null,
+            },
+          },
         });
 
         if (signUpError) {
@@ -1394,8 +1472,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         authUser = signUpData?.user || null;
 
-        if (!authUser || !signUpData?.session) {
-          alert('请先完成邮箱验证，然后再登录。');
+        // With Supabase "Confirm Email" enabled, signup returns a user but no
+        // session. The verification email contains the confirmation link.
+        if (!signUpData?.session) {
+          alert(
+            '如果这是新账号，验证邮件已发送。请打开邮件并点击确认链接；验证成功后会返回本网站。如果您已经注册，请检查密码或使用“忘记密码”。',
+          );
+          return;
+        }
+
+        if (!authUser) {
+          alert('注册失败，请稍后重试。');
           return;
         }
       }
@@ -1416,11 +1503,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (!profile) {
+        const profileReferral =
+          getPendingReferralFromAuthUser(authUser, referral);
+
         const {
           data: createdProfile,
           error: createProfileError,
         } = await supabaseClient.rpc('create_profile_with_referral', {
-          p_referral: referral || null,
+          p_referral: profileReferral || null,
         });
 
         if (createProfileError) {
@@ -3069,7 +3159,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      const [allUsers] = await Promise.all([
+      if (!session.user.email_confirmed_at) {
+        await supabaseClient.auth.signOut();
+        localStorage.removeItem(STORAGE_KEY_USER);
+        showAuthScreen();
+        return;
+      }
+
+      let [allUsers] = await Promise.all([
         syncProfilesFromSupabase(),
         syncOrdersFromSupabase(),
         syncCommissionsFromSupabase(),
@@ -3078,7 +3175,54 @@ document.addEventListener('DOMContentLoaded', () => {
         syncCartFromSupabase(),
         syncProductsFromSupabase(),
       ]);
-      const user = allUsers.find((item) => item.id === session.user.id);
+      let user = allUsers.find((item) => item.id === session.user.id);
+
+      // A newly verified user may return from the confirmation email with a
+      // valid Supabase session before their public profile exists. Finish the
+      // profile here so the confirmation link can take them straight into the app.
+      if (!user) {
+        const pendingReferral =
+          getPendingReferralFromAuthUser(session.user);
+
+        const {
+          data: createdProfile,
+          error: createProfileError,
+        } = await supabaseClient.rpc('create_profile_with_referral', {
+          p_referral: pendingReferral || null,
+        });
+
+        if (createProfileError) {
+          console.error(
+            'Profile creation after email confirmation failed:',
+            createProfileError,
+          );
+          localStorage.removeItem(STORAGE_KEY_USER);
+          showAuthScreen();
+
+          const message = String(createProfileError.message || '');
+          if (/invalid referral/i.test(message)) {
+            alert(
+              '邮箱验证已完成，但推荐码无效。请重新登录并填写正确的推荐码。',
+            );
+          } else {
+            alert('邮箱验证已完成，但账户资料建立失败，请稍后重新登录。');
+          }
+          return;
+        }
+
+        const created = Array.isArray(createdProfile)
+          ? createdProfile[0]
+          : createdProfile;
+
+        if (created) {
+          user = mapSupabaseProfile(created);
+          allUsers = await syncProfilesFromSupabase();
+          const refreshed = allUsers.find(
+            (item) => item.id === session.user.id,
+          );
+          if (refreshed) user = refreshed;
+        }
+      }
 
       if (!user) {
         localStorage.removeItem(STORAGE_KEY_USER);
