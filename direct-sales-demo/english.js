@@ -210,6 +210,11 @@
     '邀请码': 'Referral Code',
 
     '请输入邮箱和密码。': 'Please enter your email and password.',
+    '请输入有效的邮箱地址。': 'Please enter a valid email address.',
+    '该邮箱尚未验证。请先打开验证邮件并点击确认链接。': 'This email has not been verified. Open the verification email and select the confirmation link.',
+    '如果这是新账号，验证邮件已发送。请打开邮件并点击确认链接；验证成功后会返回本网站。如果您已经注册，请检查密码或使用“忘记密码”。': 'If this is a new account, a verification email has been sent. Open it and select the confirmation link; you will return to this site after verification. If you already have an account, check your password or use “Forgot password?”.',
+    '邮箱验证已完成，但推荐码无效。请重新登录并填写正确的推荐码。': 'Your email is verified, but the referral code is invalid. Sign in again and enter the correct referral code.',
+    '邮箱验证已完成，但账户资料建立失败，请稍后重新登录。': 'Your email is verified, but your account profile could not be created. Please sign in again later.',
     '登录服务暂时不可用，请稍后重试。': 'Sign-in service is temporarily unavailable. Please try again.',
     '该邮箱已经注册。请检查密码后重试，或使用“忘记密码”。': 'This email is already registered. Check your password or use “Forgot password?”.',
     '注册失败，请稍后重试。': 'Registration failed. Please try again.',
@@ -809,7 +814,7 @@
         return currentLanguage();
       },
       refresh: refreshEnglish,
-      version: '1.0.3',
+      version: '1.0.4',
     });
   }
 
